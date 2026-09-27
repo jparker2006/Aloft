@@ -17,6 +17,7 @@ import {
   acesFilmicToneMapping,
   agxToneMapping,
   clamp,
+  convertToTexture,
   dot,
   float,
   fract,
@@ -144,7 +145,7 @@ export class FramePipeline {
     let image: V3 = hdr;
     if (!p.has('notaa')) image = traa(vec4(image, 1), depth, motion, app.camera).rgb as unknown as V3;
     if (!p.has('nomotionblur')) {
-      image = motionBlur(vec4(image, 1), motion.mul(this.motionBlurScale), int(8)).rgb as unknown as V3;
+      image = motionBlur(convertToTexture(vec4(image, 1)), motion.mul(this.motionBlurScale), int(8)).rgb as unknown as V3;
     }
     if (!p.has('nobloom')) {
       const glow = bloom(vec4(image, 1), 1, 0.55, 0.85);

@@ -1,6 +1,7 @@
 // GPU tests: run in headless Chromium (npm run test:gpu). Each test returns a list of failures.
 import * as THREE from 'three/webgpu';
-import { float, texture, uv } from 'three/tsl';
+import { float, texture, texture3D, uv, vec3 } from 'three/tsl';
+import { CloudNoise } from '../../src/sky/cloudNoise';
 import { CascadeGpu } from '../../src/ocean/fft';
 import { sampleSurface } from '../../src/ocean/reference';
 import { buildInitialSpectrum, cascadeBands, spectrumParamsFromWeather } from '../../src/ocean/spectrum';
@@ -65,7 +66,8 @@ async function assembledTextureMatchesBuffer(renderer: THREE.WebGPURenderer) {
 
   const rt = new THREE.RenderTarget(N, N, { type: THREE.FloatType });
   const material = new THREE.MeshBasicNodeMaterial();
-  material.colorNode = texture(cascade.displacement, uv()).level(float(0));
+  // The material output clamps negatives, so heights are encoded into a positive range and decoded below.
+  material.colorNode = texture(cascade.displacement, uv()).level(float(0)).mul(0.05).add(0.5);
   const quad = new THREE.QuadMesh(material);
   renderer.setRenderTarget(rt);
   quad.render(renderer);
@@ -82,13 +84,36 @@ async function assembledTextureMatchesBuffer(renderer: THREE.WebGPURenderer) {
     const b = (j * N + i) * 4;
     // Render target rows may be flipped relative to texture rows; accept either.
     const rows = [j, N - 1 - j].map((jj) => (jj * N + i) * 4);
-    const errs = rows.map((o) => Math.abs(px[o + 1]! - buffer[b + 2]!));
+    const errs = rows.map((o) => Math.abs((px[o + 1]! - 0.5) * 20 - buffer[b + 2]!));
     maxErr = Math.max(maxErr, Math.min(...errs));
     maxAmp = Math.max(maxAmp, Math.abs(buffer[b + 2]!));
   }
   if (maxAmp < 0.1) failures.push(`amplitude suspiciously small: ${maxAmp}`);
   if (maxErr > 0.02 + maxAmp * 0.01) failures.push(`height error ${maxErr} at amplitude ${maxAmp}`);
   return { failures, detail: `height error ${maxErr.toExponential(2)} at amplitude ${maxAmp.toFixed(3)} m` };
+}
+
+/** The cloud noise volume generates in compute and samples as a 3D texture. */
+async function cloudNoiseSamples(renderer: THREE.WebGPURenderer) {
+  const failures: string[] = [];
+  const noise = new CloudNoise();
+  noise.generate(renderer);
+  const rt = new THREE.RenderTarget(32, 32, { type: THREE.FloatType });
+  const material = new THREE.MeshBasicNodeMaterial();
+  material.colorNode = texture3D(noise.shape, vec3(uv(), 0.5)).level(float(0));
+  const quad = new THREE.QuadMesh(material);
+  renderer.setRenderTarget(rt);
+  quad.render(renderer);
+  renderer.setRenderTarget(null);
+  const px = (await renderer.readRenderTargetPixelsAsync(rt, 0, 0, 32, 32)) as Float32Array;
+  let min = Infinity;
+  let max = -Infinity;
+  for (let i = 0; i < px.length; i += 4) {
+    min = Math.min(min, px[i]!);
+    max = Math.max(max, px[i]!);
+  }
+  if (!(max - min > 0.2)) failures.push(`noise range too small: ${min}..${max}`);
+  return { failures, detail: `shape.r range ${min.toFixed(2)}..${max.toFixed(2)}` };
 }
 
 async function run(): Promise<void> {
@@ -98,6 +123,7 @@ async function run(): Promise<void> {
     fft64: (r: THREE.WebGPURenderer) => fftMatchesDirectSum(r, 64, 1),
     fft256: (r: THREE.WebGPURenderer) => fftMatchesDirectSum(r, 256, 0),
     assembledTextureMatchesBuffer,
+    cloudNoiseSamples,
   };
   const results: NonNullable<Window['__gpuTests']> = [];
   for (const [name, fn] of Object.entries(tests)) {

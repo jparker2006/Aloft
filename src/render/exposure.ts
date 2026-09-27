@@ -17,6 +17,7 @@ import {
   max,
   mix,
   textureLoad,
+  uint,
   uniform,
   uv,
   vec3,
@@ -71,9 +72,16 @@ export class AutoExposure {
       }
       partial.element(t).assign(sum);
       workgroupBarrier();
+      // Tree reduction: eight halving steps instead of one long serial sum (which also overflows the WGSL
+      // parser's nesting limit when unrolled).
+      for (let stride = THREADS / 2; stride >= 1; stride /= 2) {
+        If(t.lessThan(uint(stride)), () => {
+          partial.element(t).addAssign(partial.element(t.add(uint(stride))));
+        });
+        workgroupBarrier();
+      }
       If(t.equal(0), () => {
-        let total: F = float(0);
-        for (let k = 0; k < THREADS; k++) total = total.add(partial.element(k)) as F;
+        const total = partial.element(uint(0));
         const meanLog = total.div(METER_W * METER_H);
         // Partial correction toward middle grey: dark scenes stay darker than grey, bright ones brighter.
         const target = clamp(log2(float(0.13)).sub(meanLog).mul(0.55), -2.5, 3);

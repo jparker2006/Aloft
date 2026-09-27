@@ -41,7 +41,7 @@ function pcg3d(vIn: U3): U3 {
     bitXor(x: unknown): unknown;
     shiftRight(x: unknown): unknown;
   };
-  bits.assign(bits.bitXor(bits.shiftRight(uint(16))));
+  bits.assign(bits.bitXor(bits.shiftRight(uvec3(16, 16, 16))));
   v.x.addAssign(v.y.mul(v.z));
   v.y.addAssign(v.z.mul(v.x));
   v.z.addAssign(v.x.mul(v.y));
@@ -60,13 +60,13 @@ function worley(p: V3, period: number, seed: number): F {
   const q = p.mul(period);
   const cell = floor(q);
   const f = fract(q);
-  let dmin: F = float(10);
+  const dmin = float(10).toVar();
   for (let x = -1; x <= 1; x++) {
     for (let y = -1; y <= 1; y++) {
       for (let z = -1; z <= 1; z++) {
         const o = vec3(x, y, z);
         const point = o.add(cellRandom(cell.add(o), period, seed));
-        dmin = min(dmin, point.sub(f).length()) as F;
+        dmin.assign(min(dmin, point.sub(f).length()));
       }
     }
   }
