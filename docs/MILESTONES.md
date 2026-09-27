@@ -2,7 +2,7 @@
 
 The order is fixed. Each milestone ends with a capture, a critique and a short report (timings, known issues).
 
-**Standing rules** (from `docs/SPEC.md` section 12):
+**Standing rules** (from `docs/SPEC.md` section 20):
 
 - Feel changes need approval before commit.
 - No em dashes.
@@ -18,8 +18,12 @@ The order is fixed. Each milestone ends with a capture, a critique and a short r
    - Vite, TypeScript strict, three `WebGPURenderer` with TSL.
    - Vitest, ESLint, Prettier.
    - A lint rule or script that rejects em dashes in the repo.
-2. WebGPU gate: an adapter check and an unsupported screen.
-3. Fixed-step clock (120 Hz simulation, render interpolation) and a URL param module.
+   - CI: type-check, lint, unit tests on every push.
+2. WebGPU gate: an adapter check and an unsupported screen. Follow the portability rules in SPEC section 3 (default limits only, filterable formats).
+3. Core modules:
+   - Fixed-step clock (120 Hz simulation, render interpolation, 4-step cap).
+   - A URL param module.
+   - Seeded RNG streams from one run seed.
 4. Shot mode:
    - `?shot=&preset=&seed=&flash=`, with settle frames and `window.__shotReady`.
    - `src/shots.ts` with bookmarks `sea_low`, `sea_high`, `horizon_lightning`, `storm_sky`.
@@ -28,15 +32,19 @@ The order is fixed. Each milestone ends with a capture, a critique and a short r
    - Contact sheet against `references/`.
    - Baseline diff.
    - `npm run capture`.
-6. Profiler overlay (F3): GPU timestamps per pass, CPU per system, internal resolution, tier.
-7. Reference images:
-   - Candidates generated from `references/PROMPTS.md`.
-   - The user picks finals, which are saved as `references/<preset>__<bookmark>.jpg`.
+   - 1536x1024 viewport.
+   - SSIM baseline diff at 0.97.
+   - `__flash` references compared against mid-flash frames.
+6. Profiler overlay (F3):
+   - GPU timestamps per pass, falling back to CPU timing where timestamp queries are missing.
+   - CPU per system.
+   - Internal resolution, tier and ladder rung.
+7. Reference images: done. The finals are in `references/`, with the mapping in `references/README.md`.
 
 **Rendering work**
 
 1. **Ocean:**
-   - JONSWAP spectrum.
+   - JONSWAP spectrum with resolution-independent seeding (hash of the wave-vector index).
    - Three FFT cascades in compute.
    - Choppy displacement.
    - Clipmap mesh with seam morphing.
@@ -44,7 +52,13 @@ The order is fixed. Each milestone ends with a capture, a critique and a short r
 2. **Foam:** Jacobian injection, ping-pong accumulation with decay, wind-aligned streak texture (Blender-baked), `fwidth` fade.
 3. **Ocean shading:** Fresnel sky reflection, glitter, subsurface through crests, absorption color, rain ripples.
 4. **Sky:** half-res volumetric storm cloud deck with temporal reprojection, low scud layer, cloud-gap light for dusk.
-5. **Lightning:** seeded strikes, bolt ribbons, cloud in-scatter point, flash light on the sea, flicker curves, `?flash=` freeze.
+5. **Lightning:**
+   - Seeded strikes and bolt ribbons.
+   - Cloud in-scatter point and flash light on the sea.
+   - Flicker curves with the 3-flashes-per-second limiter.
+   - The "Reduce flashing" mode.
+   - The `?flash=` freeze.
+   - A first-run photosensitivity notice.
 6. **Particles:** compute rain (camera-local volume) and spindrift torn from crests.
 7. **Atmosphere:** height fog and rain haze with aerial perspective; a volumetric in-scatter hook ready for the beam later.
 8. **Presets:** `dusk` and `night` as look dictionaries with resolve, apply and blend. Weather state uniforms drive ocean, particles, clouds and lightning.
@@ -63,8 +77,8 @@ The order is fixed. Each milestone ends with a capture, a critique and a short r
    - Tone map (AgX vs ACES chosen by capture comparison).
    - Grade, vignette, grain, dither.
 10. **Performance:**
-    - Quality tiers with auto selection.
-    - Dynamic resolution controller.
+    - Quality tiers from a startup benchmark.
+    - The degradation ladder and dynamic resolution controller (SPEC section 3).
     - `compileAsync` warmup.
     - Per-pass A/B flags.
 
@@ -78,7 +92,9 @@ The order is fixed. Each milestone ends with a capture, a critique and a short r
 - [ ] Lightning lights clouds from within and visibly lights the sea for a few frames. Exposure does not pump after a flash.
 - [ ] No shimmer or tiling visible at the horizon or in foam at 1080p.
 - [ ] 60 fps on the target machine at the default tier, per the overlay (user-measured). Budget table filled in with measured numbers.
-- [ ] Unit tests pass: fixed-step clock, preset resolve and blend, seeded RNG determinism.
+- [ ] Lightning never exceeds 3 full-screen flashes per second. "Reduce flashing" works in a capture.
+- [ ] Unit tests pass: fixed-step clock, preset resolve and blend, seeded RNG determinism, spectrum modes identical at 32, 64 and 256.
+- [ ] Tone mapper and volumetric technique decided and recorded (SPEC section 19).
 
 **Out of scope:** ship, character, gameplay, audio, lighthouse geometry.
 
@@ -93,17 +109,24 @@ The order is fixed. Each milestone ends with a capture, a critique and a short r
    - `npm run assets`.
 2. **`tools/blender/graybox_ship.py`:**
    - Box hull, deck, spar boxes.
-   - The **final** rigging-graph naming: shroud surfaces, yard footropes, stays, lines, holds, tops.
+   - Articulated yards, gaff and boom with pivots at the real hinges.
+   - The **final** rigging-graph naming from SPEC section 9: shroud surfaces, footropes parented to yards, stays, lines, holds, tops, task spots.
    - Collision proxies.
    - Exported to `public/assets/graybox_ship.glb`.
 3. **GLB contract test** for the graybox ship (node names, attribute slots, bounds).
-4. **CPU swell worker:** 64x64 FFT mirror of the swell cascade with height, normal and velocity queries, plus a debug overlay comparing CPU and GPU heights.
+4. **CPU ocean query worker:**
+   - FFTs of the two largest cascades: 64x64 and 32x32.
+   - Snapshots keyed to simulation time at 30 Hz.
+   - Inverse displacement.
+   - Height, normal and velocity queries.
+   - A debug overlay comparing CPU and GPU heights.
+   - A unit test on shared bands.
 5. **Ship rigid body at 120 Hz:**
    - Buoyancy probes, damping and righting.
    - Constant scripted forward drive and a fixed heading. No helm yet: the ship just rides the sea.
 6. **Sailor as a capsule, simulated in the ship frame with fictitious forces:**
    - Modes: `deck`, `climb`, `footrope`, `hang`, `swing`, `slide`, `air`, `knockdown` (placeholder).
-   - All attachments are ship-local.
+   - Attachments are `(node, localPoint)` on the hull or an articulated spar, so a yard can be braced by a debug key while the sailor stands on it.
 7. **Rope rendering:** simple instanced segments along the rigging graph. Swing lines are a solved pendulum.
 8. **Camera:** horizon-stable, spring follow, jolt absorption, probe collision.
 9. **Input:** keyboard and mouse bindings from the spec, gamepad mapping, input latching, jump buffer, coyote time.
@@ -116,7 +139,7 @@ The order is fixed. Each milestone ends with a capture, a critique and a short r
 
 - [ ] The sailor can go from deck to the fore topgallant yard and back down, using climb, footrope, swing, slide and leap, at every sea state on the slider.
 - [ ] Ship motion is felt in traversal (swings are pumped or robbed by the roll, and leaps drift) without causing input-model falls.
-- [ ] Deterministic: the same seed and input recording replay the same path (a recorded-input test).
+- [ ] Deterministic: a recorded input file on a fixed seed replays the same ship pose and sailor path after 60 s, within float tolerance.
 - [ ] Unit tests pass: ship-frame acceleration terms against analytic cases, rope constraint, fixed-step interpolation.
 - [ ] No regression in milestone 1 captures or timings.
 
@@ -130,14 +153,14 @@ The order is fixed. Each milestone ends with a capture, a critique and a short r
 
 1. **Hydrodynamics:** lateral resistance, hull drag, rudder lift with authority lost when the stern lifts, wave yaw moment.
 2. **Wheel:** inertia, rudder lag, weather helm feedback, helm camera, `helm` mode.
-3. **Lashing the wheel,** with drift over time and escalating broach cues.
-4. **Sail model:**
-   - Set states (full, reef 1, reef 2, furled).
+3. **Lashing the wheel:** a fixed rudder angle plus lash slip toward wave yaw, with escalating cues: slatting, heel, creak, heading tick, broach warning.
+4. **Sail model (analytic; cloth stays visual only):**
+   - Set states (full, reef 1, reef 2, furled, torn).
    - Brace and sheet trim.
    - Force from apparent wind at the center of effort, producing heel and weather helm.
-5. **Surfing:** a speed burst on a swell face. Broach and capsize detection, and dismasting load integration (lose states as debug events for now).
+5. **Surfing and failure:** a speed burst on a swell face. Capsize (heel over 70 degrees for 1.5 s) and dismasting (3 s load window, warnings at 60%) raise debug events for now.
 6. **Trim interaction:** from the pin rail as a `task` mode stub. Reefing aloft uses the footrope from milestone 2.
-7. **HUD:** heel and trim indicator, wind ribbon, broach warning.
+7. **HUD:** heading strip with course tick and wind arrow, heel and trim indicator, broach warning.
 8. **Tuning:** all new constants in `tuning.ts`, with the tuning panel extended.
 
 **Acceptance**
@@ -160,7 +183,7 @@ The order is fixed. Each milestone ends with a capture, a critique and a short r
    - The rigging graph with **identical names** to the graybox.
    - Sail grids with pin weights; collision proxies.
 2. **Materials:** a part-ID shared material; wood, tarred wood, canvas, rope and iron array textures baked by Blender scripts with declared color spaces; wet shading driven by weather.
-3. **Cloth sails:**
+3. **Cloth sails (visual only; never fed back into physics):**
    - Position-based dynamics in compute at a fixed substep, pinned to the yards and gaff.
    - Wind pressure from the sail model, so the visual billow matches the force model.
    - Reef states reduce the cloth area.
@@ -191,14 +214,15 @@ The order is fixed. Each milestone ends with a capture, a critique and a short r
 2. **Tasks:** stow jib, reef 1 and 2, secure torn staysail, cut away topgallant, lash wheel. Each has consequences on a missed deadline.
 3. **Green water:** wave-over-deck detection from the CPU swell query, deck water sheet effect, knockdown mode, sailor tumble and grab.
 4. **Overboard:**
-   - Swim mode in world space with wave physics.
-   - The trailing line astern; the haul hand over hand and climb aboard.
+   - Swim mode in world space riding the ocean query.
+   - A 40 m trailing line astern as a CPU rope chain, and a 20 s swim timer.
+   - The haul hand over hand and the scripted climb aboard.
    - Drown and restart.
-5. **Lose conditions** wired to checkpoints: capsize, dismast, drown. Wear carries across acts.
+5. **Lose conditions** wired to checkpoints: capsize, dismast, drown, grounding on the harbor rocks. Wear carries across acts as visuals only. The act reached is saved locally for Continue.
 6. **`tools/blender/lighthouse.py`:** headland, tower, lantern room, rocks, leading lights.
 7. **Lighthouse beam:** volumetric rotating beam through fog and rain, lighting the sea.
-8. **Harbor entrance set piece:** breakers on the rocks, the leading-light alignment, the win trigger, the storm-breaks cinematic.
-9. **Menus:** start, pause, settings (quality, bindings, sensitivity), act select after completion.
+8. **Harbor entrance set piece:** breakers on the rocks, front and rear leading lights that line up on the channel bearing, a 60 m gap, the win trigger, the storm-breaks cinematic.
+9. **Menus and settings:** title (New crossing, Continue), pause, and the full settings list from SPEC section 12, plus act select after completion.
 10. **Captures:** `lighthouse_far` and `harbor_entrance` bookmarks.
 
 **Acceptance**
