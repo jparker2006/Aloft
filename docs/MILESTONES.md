@@ -88,8 +88,7 @@ The order is fixed. Each milestone ends with a capture, a critique and a short r
 
 **Work**
 
-1. **Blender pipeline bring-up:**
-   - Headless Blender installed in the environment, version pinned in `tools/blender/VERSION`.
+1. **Blender pipeline bring-up** (install, runner and self-test are already done in `tools/blender/`):
    - `tools/blender/common.py`.
    - `npm run assets`.
 2. **`tools/blender/graybox_ship.py`:**

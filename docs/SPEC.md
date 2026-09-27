@@ -397,7 +397,12 @@ This closes the gap where the reference shipped part IDs in the wrong UV slot un
 
 **Loader fallbacks:** each loader has a placeholder fallback plus a console warning that names the script to rerun.
 
-**Environment:** Blender is not installed in the cloud container today. Milestone 2 needs it. The environment setup script must install the pinned Blender version in headless mode.
+**Environment:**
+
+- Blender 5.2.2 LTS is pinned in `tools/blender/VERSION`. `tools/blender/install.sh` installs it and is safe to rerun.
+- **Cloud:** `download.blender.org` is blocked by the network policy, so the cloud container uses the official `bpy` module from PyPI.
+- **Locally:** a real Blender 5.2.2 binary works the same way through `tools/blender/run.sh`.
+- The environment setup script should call `install.sh` so new sessions start with Blender ready.
 
 ## 11. Capture and visual review loop
 
