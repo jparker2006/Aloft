@@ -2,7 +2,7 @@
 
 Paste these into your image generator (for example GPT image gen in ChatGPT). Generate 2 or 3 variants of each prompt and pick the best one. Save picks into this folder with the exact filename given, as PNG or JPG.
 
-**Naming:** `<preset>__<bookmark>.png`. The preset is `dusk` or `night`. The bookmark matches a camera bookmark in the capture script, so each capture is compared against its reference. If you keep more than one pick, add `__2`, `__3`.
+**Naming:** the final picks and their naming convention are recorded in `README.md` in this folder.
 
 **How they are used:** as mood, value structure and color targets, not pixel matches. The 3D build has to beat them, not copy them.
 
