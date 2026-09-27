@@ -5,7 +5,8 @@ import type { PrewarmHook, ShotHook } from './app/shot';
 import { LookBlender, LookUniforms, resolvePreset } from './render/look';
 import { WEATHER, WeatherController } from './render/weather';
 import { Ocean } from './ocean/ocean';
-import { createOceanMaterial, createTestGrid } from './ocean/surface';
+import { Clipmap } from './ocean/clipmap';
+import { createOceanMaterial } from './ocean/surface';
 import { FramePipeline } from './render/pipeline';
 import { GradientSky } from './sky/gradient';
 
@@ -23,7 +24,9 @@ export function buildStage(app: App): Stage {
   const weather = app.addSystem(new WeatherController(WEATHER.gale));
   new GradientSky(app.scene, look);
   const ocean = app.addSystem(new Ocean(app, weather));
-  app.scene.add(createTestGrid(createOceanMaterial(ocean, look)));
+  const clipmap = new Clipmap((base) => createOceanMaterial(ocean, look, base));
+  app.scene.add(clipmap.group);
+  app.addSystem({ name: 'clipmap', update: () => clipmap.update(app.camera) });
   new FramePipeline(app, look);
 
   const shotHooks: ShotHook[] = [

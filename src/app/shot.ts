@@ -1,7 +1,8 @@
 // Shot mode: a deterministic capture of one bookmark at one preset (SPEC section 15).
 //   ?shot=<bookmark>&preset=<dusk|night>&seed=<n>[&flash=<t>]
-// Fixes the camera, simulation time, weather and RNG, prewarms slow-settling systems, renders a fixed
-// number of frames at a fixed dt so TAA and exposure settle, then sets window.__shotReady.
+// Fixes the camera, simulation time, weather and RNG, prewarms systems that need simulated history
+// (foam), then renders a fixed number of frames with simulation time frozen, like a photograph, so TAA
+// and exposure converge on one still moment. Then sets window.__shotReady.
 
 import type { App } from './app';
 import { directionFromAngles } from './world';
@@ -20,7 +21,6 @@ export type ShotHook = (shot: ShotRequest) => void | Promise<void>;
 /** Systems that need simulated history before the first frame (foam, clouds) register here. */
 export type PrewarmHook = (seconds: number) => void | Promise<void>;
 
-export const SHOT_FRAME_DT = 1 / 60;
 export const SHOT_SETTLE_FRAMES = 24;
 export const SHOT_PREWARM_SECONDS = 12;
 
@@ -60,7 +60,7 @@ export async function runShot(app: App, hooks: { shot: ShotHook[]; prewarm: Prew
     for (const h of hooks.prewarm) await h(SHOT_PREWARM_SECONDS);
 
     for (let i = 0; i < SHOT_SETTLE_FRAMES; i++) {
-      app.frame(SHOT_FRAME_DT);
+      app.frame(0);
       await new Promise((r) => requestAnimationFrame(r));
     }
     const device = (app.renderer.backend as { device?: GPUDevice }).device;

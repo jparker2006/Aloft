@@ -9,3 +9,6 @@ dist/
 captures/
 test-results/
 playwright-report/
+
+# Python bytecode from Blender scripts
+__pycache__/

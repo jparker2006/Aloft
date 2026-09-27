@@ -1,34 +1,28 @@
 // Ocean surface material and geometry.
 import * as THREE from 'three/webgpu';
-import {
-  Fn,
-  abs,
-  cameraPosition,
-  dot,
-  float,
-  max,
-  mix,
-  pow,
-  positionLocal,
-  reflect,
-  varying,
-  vec3,
-  vec4,
-} from 'three/tsl';
+import { Fn, abs, cameraPosition, dot, float, max, mix, pow, reflect, varying, vec3, vec4 } from 'three/tsl';
 import type { LookUniforms } from '../render/look';
 import { makeSkyRadiance } from '../sky/skyFunction';
 import type { Ocean } from './ocean';
 
 type V3 = THREE.Node<'vec3'>;
 
-export function createOceanMaterial(ocean: Ocean, look: LookUniforms): THREE.MeshBasicNodeMaterial {
+/**
+ * Builds the sea surface material for one clipmap level.
+ * @param basePosition node giving the vertex's undisplaced world position (y = 0)
+ */
+export function createOceanMaterial(
+  ocean: Ocean,
+  look: LookUniforms,
+  basePosition: V3,
+): THREE.MeshBasicNodeMaterial {
   const material = new THREE.MeshBasicNodeMaterial();
   const sky = makeSkyRadiance(look);
 
-  // Vertex: undisplaced world XZ -> displaced world position.
-  const baseXZ = positionLocal.xz;
+  // Vertex: undisplaced world XZ -> displaced world position. Meshes keep an identity transform.
+  const baseXZ = basePosition.xz;
   const vertexDistance = baseXZ.sub(cameraPosition.xz).length();
-  const displaced = positionLocal.add(ocean.displacement(baseXZ, vertexDistance));
+  const displaced = basePosition.add(ocean.displacement(baseXZ, vertexDistance));
   material.positionNode = displaced;
 
   const gridXZ = varying(baseXZ, 'vGridXZ');
@@ -52,13 +46,4 @@ export function createOceanMaterial(ocean: Ocean, look: LookUniforms): THREE.Mes
     return vec4(color, 1);
   })();
   return material;
-}
-
-/** Temporary single-level grid for step 5b; replaced by the clipmap. */
-export function createTestGrid(material: THREE.Material): THREE.Mesh {
-  const geometry = new THREE.PlaneGeometry(2048, 2048, 512, 512);
-  geometry.rotateX(-Math.PI / 2);
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.frustumCulled = false;
-  return mesh;
 }

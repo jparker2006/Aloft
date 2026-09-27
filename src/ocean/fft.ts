@@ -144,7 +144,10 @@ export class CascadeGpu {
     this.spectrumOld.needsUpdate = true;
     this.spectrumNew.needsUpdate = true;
     this.crossfade.value = instant ? 1 : 0;
+    this.spectrumVersion++;
   }
+
+  private spectrumVersion = 0;
 
   private buildEvolve(): THREE.ComputeNode {
     const N = this.size;
@@ -264,11 +267,16 @@ export class CascadeGpu {
     })().compute(N * N, [64]);
   }
 
-  /** Dispatches the full cascade update for time `t` (seconds). */
+  private lastKey = '';
+
+  /** Dispatches the full cascade update for time `t` (seconds). Skipped when nothing changed. */
   update(renderer: THREE.WebGPURenderer, t: number, choppiness: number, crossfadeStep = 0): void {
+    if (this.crossfade.value < 1) this.crossfade.value = Math.min(1, this.crossfade.value + crossfadeStep);
+    const key = `${t}|${choppiness}|${this.crossfade.value}|${this.spectrumVersion}`;
+    if (key === this.lastKey) return;
+    this.lastKey = key;
     this.time.value = t % REPEAT_PERIOD;
     this.choppiness.value = choppiness;
-    if (this.crossfade.value < 1) this.crossfade.value = Math.min(1, this.crossfade.value + crossfadeStep);
     renderer.compute(this.evolve);
     for (const pass of this.fftPasses) renderer.compute(pass);
     renderer.compute(this.assemble);
