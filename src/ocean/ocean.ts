@@ -57,10 +57,16 @@ export class Ocean {
     });
   }
 
+  /** Quality ladder's last resort: update the finest cascade every other frame. */
+  fineCascadeEveryOtherFrame = false;
+
   update(frame: FrameInfo): void {
     const choppiness = this.weather.state.choppiness;
     const step = frame.realDt / SPECTRUM_CROSSFADE_SECONDS;
-    for (const c of this.cascades) c.update(this.app.renderer, frame.time, choppiness, step);
+    this.cascades.forEach((c, i) => {
+      const skip = this.fineCascadeEveryOtherFrame && i === this.cascades.length - 1 && frame.frame % 2 === 1;
+      if (!skip) c.update(this.app.renderer, frame.time, choppiness, step);
+    });
     this.stepFoam(frame.realDt);
   }
 
@@ -77,14 +83,30 @@ export class Ocean {
    * Builds foam history for a still capture: runs the large cascades and the foam integration over the
    * `seconds` before the current time, then restores the current time.
    */
-  prewarm(seconds: number, time: number): void {
-    const dt = 0.25;
+  prewarm(seconds: number, time: number, onStep?: (t: number, dt: number) => void): void {
+    const dt = 0.4;
     const choppiness = this.weather.state.choppiness;
     for (let t = time - seconds; t < time; t += dt) {
       for (let i = 0; i < this.foam.length; i++) this.cascades[i]!.update(this.app.renderer, t, choppiness);
       this.stepFoam(dt);
+      onStep?.(t, dt);
     }
     for (const c of this.cascades) c.update(this.app.renderer, time, choppiness);
+  }
+
+  /**
+   * Height and Jacobian of the displaced surface at undisplaced world XZ, sampled at mip 0 so it works in
+   * compute and vertex stages. Height uses every cascade; the Jacobian the two that break.
+   */
+  surfaceLevel0(xz: V2): { height: F; jacobian: F } {
+    let height: F = float(0);
+    let jacobian: F = float(1);
+    this.cascades.forEach((c, i) => {
+      const d = texture(c.displacement, this.uvFor(i, xz)).level(float(0));
+      height = height.add(d.y) as F;
+      if (i < 2) jacobian = jacobian.add(d.w.sub(1)) as F;
+    });
+    return { height, jacobian };
   }
 
   /** Accumulated foam (x) and fresh injection (y) at undisplaced world XZ, summed over cascades. */

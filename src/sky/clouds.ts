@@ -38,6 +38,7 @@ import type { App, FrameInfo } from '../app/app';
 import type { FrameUniforms } from '../render/frameUniforms';
 import type { LookUniforms } from '../render/look';
 import type { WeatherUniforms } from '../render/weather';
+import type { LightningUniforms } from '../fx/lightning';
 import { CloudNoise } from './cloudNoise';
 
 type F = THREE.Node<'float'>;
@@ -80,6 +81,7 @@ export class StormClouds {
   private readonly look: LookUniforms;
   private readonly weather: WeatherUniforms;
   private readonly frame: FrameUniforms;
+  private readonly lightning: LightningUniforms | null;
 
   private readonly invViewProj = uniform(new THREE.Matrix4());
   private readonly viewProj = uniform(new THREE.Matrix4());
@@ -100,6 +102,9 @@ export class StormClouds {
   private readonly resolvedNode: THREE.TextureNode;
   /** Shot mode stops re-marching once accumulation has converged. */
   maxAccumulatedFrames = Infinity;
+  /** Raymarch step counts; uniforms so the quality ladder can change them without recompiling. */
+  readonly deckSteps = uniform(28, 'int');
+  readonly scudSteps = uniform(8, 'int');
 
   constructor(
     app: App,
@@ -107,8 +112,10 @@ export class StormClouds {
     weather: WeatherUniforms,
     frame: FrameUniforms,
     quality: CloudQuality,
+    lightning: LightningUniforms | null = null,
   ) {
     this.app = app;
+    this.lightning = lightning;
     this.look = look;
     this.weather = weather;
     this.frame = frame;
@@ -119,11 +126,13 @@ export class StormClouds {
         minFilter: THREE.LinearFilter,
         magFilter: THREE.LinearFilter,
       });
+    this.deckSteps.value = quality.deckSteps;
+    this.scudSteps.value = quality.scudSteps;
     this.raw = make();
     this.history = [make(), make()];
 
     const march = new THREE.NodeMaterial();
-    march.fragmentNode = this.buildMarch(quality);
+    march.fragmentNode = this.buildMarch();
     this.marchQuad = new THREE.QuadMesh(march);
 
     this.historyNode = texture(this.history[1].texture);
@@ -244,10 +253,20 @@ export class StormClouds {
       ? saturate(p.y.sub(this.weather.cloudBase).div(this.look.u.cloudThickness))
       : float(0.2);
     const ambient = mix(this.look.u.cloudShadow, this.look.u.ambient.mul(6), height.mul(0.7));
-    return key.add(ambient) as V3;
+    return key.add(ambient).add(this.flashLight(p)) as V3;
   }
 
-  private buildMarch(quality: CloudQuality): V4 {
+  /** Light from a lightning strike inside the deck: a point source seen through scattering cloud. */
+  private flashLight(p: V3): V3 {
+    if (!this.lightning) return vec3(0, 0, 0) as V3;
+    const d = p.sub(this.lightning.cloudPos).length();
+    const falloff = float(1)
+      .div(float(1).add(d.div(900).pow(2)))
+      .mul(exp(d.div(-5000)));
+    return this.lightning.color.mul(this.lightning.flash.mul(falloff).mul(28)) as V3;
+  }
+
+  private buildMarch(): V4 {
     return Fn(() => {
       const dir = this.rayFromUv(uv());
       const radiance = vec3(0, 0, 0).toVar();
@@ -259,13 +278,13 @@ export class StormClouds {
         const px = uv().mul(vec2(1024, 768));
         const jitter = fract(fract(dot(px, vec2(0.06711056, 0.00583715)).add(this.jitter)).mul(52.9829189));
 
-        const march = (bottom: number | F, top: number | F, steps: number, deck: boolean) => {
+        const march = (bottom: number | F, top: number | F, steps: THREE.Node<'int'>, deck: boolean) => {
           const toF = (x: number | F): F => (typeof x === 'number' ? (float(x) as F) : x);
           const t0 = max(toF(bottom).sub(this.cameraPos.y).div(dir.y), 0);
           const t1 = min(toF(top).sub(this.cameraPos.y).div(dir.y), MAX_DISTANCE);
           If(t1.greaterThan(t0), () => {
-            const dt = t1.sub(t0).div(steps);
-            Loop(steps, ({ i }: { i: THREE.Node<'int'> }) => {
+            const dt = t1.sub(t0).div(float(steps));
+            Loop({ start: 0, end: steps, type: 'int', condition: '<' }, ({ i }: { i: THREE.Node<'int'> }) => {
               If(transmittance.lessThan(0.02), () => {
                 Break();
               });
@@ -285,11 +304,11 @@ export class StormClouds {
             });
           });
         };
-        march(SCUD_BASE, SCUD_TOP, quality.scudSteps, false);
+        march(SCUD_BASE, SCUD_TOP, this.scudSteps, false);
         march(
           this.weather.cloudBase,
           this.weather.cloudBase.add(this.look.u.cloudThickness),
-          quality.deckSteps,
+          this.deckSteps,
           true,
         );
       });

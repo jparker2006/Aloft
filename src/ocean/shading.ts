@@ -25,6 +25,7 @@ import {
   vec3,
 } from 'three/tsl';
 import type { LookUniforms } from '../render/look';
+import type { LightningUniforms } from '../fx/lightning';
 import type { WeatherUniforms } from '../render/weather';
 
 type F = THREE.Node<'float'>;
@@ -65,8 +66,25 @@ export function rainRippleNormal(n: V3, xz: V2, time: F, rain: F, distance: F): 
 }
 
 /** Returns a builder that emits the shading nodes inline (called once per material). */
+export interface FlashLight {
+  direction: V3;
+  radiance: V3;
+}
+
+/** A lightning strike as a directional light at a surface point (null when lightning is disabled). */
+export function flashLightAt(lightning: LightningUniforms | null, worldPos: V3): FlashLight | null {
+  if (!lightning) return null;
+  const toFlash = lightning.cloudPos.sub(worldPos);
+  const d = toFlash.length();
+  const falloff = float(1).div(float(1).add(d.div(5000).pow(2)));
+  return {
+    direction: toFlash.div(d) as V3,
+    radiance: lightning.color.mul(lightning.flash.mul(falloff).mul(2.2)) as unknown as V3,
+  };
+}
+
 export function makeSeaShading(look: LookUniforms, weather: WeatherUniforms, sky: (dir: V3) => V3) {
-  return (inputs: SeaShadingInputs): V3 => {
+  return (inputs: SeaShadingInputs, flash: FlashLight | null = null): V3 => {
     const { view: v, distance, height } = inputs;
     const n = rainRippleNormal(inputs.normal, inputs.gridXZ, inputs.time, weather.rainRate, distance);
     const L = look.keyDirection;
@@ -104,7 +122,21 @@ export function makeSeaShading(look: LookUniforms, weather: WeatherUniforms, sky
     // Body: dim upwelling light.
     const body = look.u.waterDeep.mul(look.u.ambient.mul(2.2).add(keyRadiance.mul(saturate(L.y).mul(0.15))));
 
-    return mix(body.add(subsurface), reflection, fresnel).add(glint) as unknown as V3;
+    let color = mix(body.add(subsurface), reflection, fresnel).add(glint) as unknown as V3;
+    if (flash) {
+      // The flash as a second, broad key light: glint and a little light scattered up out of the water.
+      const hf = normalize(flash.direction.add(v));
+      const nDotLf = max(dot(n, flash.direction), 0);
+      const flashGlint = flash.radiance.mul(
+        ggxD(max(dot(n, hf), 0), alpha.add(0.08))
+          .mul(fresnel.max(0.02))
+          .mul(float(0.25).div(max(nDotLf.mul(nDotV), 0.02)))
+          .mul(nDotLf),
+      );
+      const flashBody = look.u.waterScatter.mul(flash.radiance).mul(crest.mul(0.8).add(0.08));
+      color = color.add(flashGlint).add(flashBody.mul(float(1).sub(fresnel))) as unknown as V3;
+    }
+    return color;
   };
 }
 
@@ -128,35 +160,45 @@ export function makeFoamCoverage(foamTexture: THREE.Texture, weather: WeatherUni
     const across = dot(inputs.gridXZ, vec2(wind.y.negate(), wind.x));
     const uvAt = (tileAlong: number, tileAcross: number) =>
       vec2(along.div(tileAlong), across.div(tileAcross));
-    const lace = texture(foamTexture, uvAt(7, 7)).r;
-    const bubbles = texture(foamTexture, uvAt(1.8, 1.8)).g;
-    const streak = texture(foamTexture, uvAt(46, 14)).b;
-    const breakup = texture(foamTexture, uvAt(95, 95)).a;
+    const lace = texture(foamTexture, uvAt(2.4, 2.4)).r;
+    const laceBroad = texture(foamTexture, uvAt(7.3, 7.3)).r;
+    const bubbles = texture(foamTexture, uvAt(0.9, 0.9)).g;
+    const streak = texture(foamTexture, uvAt(38, 24)).b;
+    const breakup = texture(foamTexture, uvAt(70, 70)).a;
 
-    // Fade texture detail to its average where it would alias (one texel covering many pixels).
-    const footprint = fwidth(along).div(7);
-    const laceSafe = mix(lace, float(0.28), smoothstep(0.08, 0.4, footprint));
-    const bubblesSafe = mix(bubbles, float(0.06), smoothstep(0.02, 0.1, footprint));
+    // Foam dissolves rather than being drawn: the lace acts as a threshold field (bubble walls high,
+    // cell centres low) and the foam amount decides how much of it passes. Fresh foam covers everything;
+    // ageing foam opens holes at the cell centres and ends as a thin irregular net, then nothing.
+    const field = lace.mul(0.38).add(laceBroad.mul(0.3)).add(breakup.mul(0.17)).add(bubbles.mul(0.15));
+    // Where one texel spans many pixels, fade the field to its mean and widen the edge.
+    const footprint = fwidth(along).div(2.4);
+    const fade = smoothstep(0.08, 0.45, footprint);
+    const fieldSafe = mix(field, float(0.38), fade);
+    const softness = float(0.2).add(fade.mul(0.25));
 
     const f = inputs.amount.x;
     const fresh = inputs.amount.y;
-    const dense = smoothstep(0.5, 0.95, f.add(fresh.mul(0.5)));
-    const lacy = smoothstep(0.12, 0.55, f.mul(breakup.mul(0.9).add(0.55))).mul(laceSafe);
-    const streaky = smoothstep(0.03, 0.35, f).mul(streak).mul(breakup.mul(0.6).add(0.4));
-    const coverage = max(dense.mul(bubblesSafe.mul(0.25).add(0.8)), max(lacy, streaky.mul(0.75)));
+    const amount = f.mul(1.35).add(fresh.mul(1.0)).mul(breakup.mul(0.5).add(0.75));
+    const threshold = float(1).sub(amount);
+    const dissolved = smoothstep(threshold, threshold.add(softness), fieldSafe);
+    const bubblesSafe = mix(bubbles, float(0.06), smoothstep(0.02, 0.1, footprint));
+    const streaky = smoothstep(0.08, 0.45, f)
+      .mul(smoothstep(0.5, 0.95, streak))
+      .mul(0.32);
+    const coverage = max(dissolved.mul(bubblesSafe.mul(0.15).add(0.9)), streaky);
     return saturate(coverage) as unknown as F;
   };
 }
 
 /** Radiance of lit foam: a bright, rough, slightly translucent layer. */
-export function foamRadiance(look: LookUniforms, normal: V3, view: V3): V3 {
+export function foamRadiance(look: LookUniforms, normal: V3, view: V3, flash: FlashLight | null = null): V3 {
   const L = look.keyDirection;
   const keyRadiance = look.u.keyColor.mul(look.u.keyIntensity);
   const diffuse = saturate(dot(normal, L).mul(0.6).add(0.4));
   const backlight = pow(saturate(dot(view.negate(), L)), 6).mul(0.35);
   const albedo = float(0.82).mul(look.u.foamBrightness);
-  return look.u.ambient
-    .mul(2.4)
-    .add(keyRadiance.mul(diffuse.mul(0.32).add(backlight)))
-    .mul(albedo) as unknown as V3;
+  let light = look.u.ambient.mul(2.4).add(keyRadiance.mul(diffuse.mul(0.32).add(backlight))) as unknown as V3;
+  if (flash)
+    light = light.add(flash.radiance.mul(saturate(dot(normal, flash.direction)).mul(0.5).add(0.2))) as V3;
+  return light.mul(albedo) as unknown as V3;
 }

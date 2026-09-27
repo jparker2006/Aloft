@@ -32,3 +32,92 @@ canvas {
   opacity: 0.6;
   font-size: 0.85rem;
 }
+
+.notice {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(3, 5, 8, 0.82);
+  z-index: 10;
+}
+
+.notice-card {
+  max-width: 30rem;
+  padding: 1.6rem 1.8rem;
+  background: #0d1218;
+  border: 1px solid #253040;
+  border-radius: 6px;
+  line-height: 1.5;
+}
+
+.notice-card h2 {
+  margin-top: 0;
+  font-weight: 600;
+}
+
+.notice-toggle {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  margin: 1rem 0;
+}
+
+.notice-card button {
+  font: inherit;
+  padding: 0.5rem 1.4rem;
+  border: 1px solid #3d5066;
+  background: #1a2533;
+  color: inherit;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.notice-hint {
+  opacity: 0.55;
+  font-size: 0.85rem;
+  margin-bottom: 0;
+}
+
+.loading {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #05070a;
+  z-index: 20;
+}
+
+.loading-card {
+  text-align: center;
+  letter-spacing: 0.04em;
+}
+
+.loading-card h1 {
+  font-weight: 300;
+  font-size: 2.4rem;
+  margin: 0 0 0.4rem;
+}
+
+.loading-card p {
+  opacity: 0.55;
+  margin: 0;
+}
+
+.profiler {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  margin: 0;
+  padding: 8px 10px;
+  background: rgba(4, 6, 9, 0.72);
+  color: #cfe2d6;
+  font:
+    11px/1.4 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 5;
+}

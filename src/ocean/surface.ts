@@ -4,9 +4,9 @@ import { Fn, cameraPosition, float, max, mix, varying, vec4 } from 'three/tsl';
 import type { FrameUniforms } from '../render/frameUniforms';
 import type { LookUniforms } from '../render/look';
 import type { WeatherUniforms } from '../render/weather';
-import { makeSkyRadiance } from '../sky/skyFunction';
 import type { Ocean } from './ocean';
-import { foamRadiance, makeFoamCoverage, makeSeaShading } from './shading';
+import type { LightningUniforms } from '../fx/lightning';
+import { flashLightAt, foamRadiance, makeFoamCoverage, makeSeaShading } from './shading';
 
 type V3 = THREE.Node<'vec3'>;
 
@@ -20,10 +20,12 @@ export function createOceanMaterial(
   weather: WeatherUniforms,
   frame: FrameUniforms,
   foamTexture: THREE.Texture,
+  reflectedSky: (dir: V3) => V3,
+  lightning: LightningUniforms | null,
   basePosition: V3,
 ): THREE.MeshBasicNodeMaterial {
   const material = new THREE.MeshBasicNodeMaterial();
-  const shade = makeSeaShading(look, weather, makeSkyRadiance(look));
+  const shade = makeSeaShading(look, weather, reflectedSky);
   const foamCoverage = makeFoamCoverage(foamTexture, weather);
 
   // Vertex: undisplaced world XZ -> displaced world position. Meshes keep an identity transform.
@@ -40,10 +42,11 @@ export function createOceanMaterial(
     const distance = toCamera.length();
     const view = toCamera.div(distance) as V3;
     const normal = ocean.normalFromSlopes(ocean.slopes(gridXZ, distance));
-    const sea = shade({ normal, view, distance, height: worldPos.y, gridXZ, time: frame.time });
+    const flash = flashLightAt(lightning, worldPos as V3);
+    const sea = shade({ normal, view, distance, height: worldPos.y, gridXZ, time: frame.time }, flash);
     const coverage = foamCoverage({ amount: ocean.foamAmount(gridXZ), gridXZ, normal, view });
     // Foam also sits on the crest glow: it is lit from behind like the water it rides on.
-    const foam = foamRadiance(look, normal, view);
+    const foam = foamRadiance(look, normal, view, flash);
     const color = mix(sea, foam, coverage.mul(float(0.92)));
     return vec4(max(color, float(0)), 1);
   })();

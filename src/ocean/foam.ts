@@ -27,7 +27,7 @@ export class FoamAccumulator {
   /** Jacobian below which foam starts to form. */
   readonly threshold = uniform(0.6);
   /** Foam injected per unit of Jacobian below the threshold. */
-  readonly gain = uniform(2.2);
+  readonly gain = uniform(2.6);
   /** Foam half-life in seconds. */
   readonly halfLife = uniform(3.5);
   private readonly passes: [THREE.ComputeNode, THREE.ComputeNode];
@@ -78,7 +78,7 @@ export class FoamAccumulator {
   /** Configures thresholds from the wind: stronger wind breaks more crests and keeps foam longer. */
   setWind(windSpeed: number): void {
     const t = Math.min(Math.max((windSpeed - 12) / 20, 0), 1);
-    this.threshold.value = 0.45 + 0.4 * t;
+    this.threshold.value = 0.62 + 0.3 * t;
     this.halfLife.value = 2.5 + 3 * t;
   }
 }

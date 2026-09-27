@@ -10,30 +10,44 @@ export interface DataTextureOptions {
   repeat?: boolean;
 }
 
-/** Loads a linear (non-color) data texture. The returned texture is usable immediately. */
+/**
+ * Loads a linear (non-color) data texture. The returned texture is usable immediately: until the image
+ * arrives three binds its default placeholder, and if loading fails a 1x1 fallback color is used.
+ */
 export function loadDataTexture(url: string, options: DataTextureOptions): THREE.Texture {
-  const placeholder = new Uint8Array(options.fallback);
-  const texture = new THREE.DataTexture(placeholder, 1, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+  const texture = new THREE.Texture();
   texture.colorSpace = THREE.NoColorSpace;
-  texture.needsUpdate = true;
-  new THREE.ImageBitmapLoader().setOptions({ imageOrientation: 'flipY', colorSpaceConversion: 'none' }).load(
+  texture.flipY = false;
+  texture.generateMipmaps = true;
+  texture.minFilter = THREE.LinearMipmapLinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.anisotropy = 8;
+  if (options.repeat) texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  new THREE.ImageBitmapLoader().setOptions({ imageOrientation: 'none', colorSpaceConversion: 'none' }).load(
     url,
     (bitmap) => {
-      const t = texture as unknown as THREE.Texture;
-      t.image = bitmap;
-      t.colorSpace = THREE.NoColorSpace;
-      t.generateMipmaps = true;
-      t.minFilter = THREE.LinearMipmapLinearFilter;
-      t.magFilter = THREE.LinearFilter;
-      t.anisotropy = 8;
-      if (options.repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
-      t.needsUpdate = true;
+      texture.image = bitmap;
+      texture.needsUpdate = true;
       loaded.add(url);
     },
     undefined,
-    () => console.warn(`[assets] ${url} is missing; run ${options.script}. Using a placeholder.`),
+    () => {
+      console.warn(`[assets] ${url} is missing; run ${options.script}. Using a placeholder.`);
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 1;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const [r, g, b, a] = options.fallback;
+        ctx.fillStyle = `rgba(${r}, ${g}, ${b}, ${a / 255})`;
+        ctx.fillRect(0, 0, 1, 1);
+      }
+      texture.image = canvas;
+      texture.generateMipmaps = false;
+      texture.minFilter = THREE.LinearFilter;
+      texture.needsUpdate = true;
+      loaded.add(url);
+    },
   );
-  if (options.repeat) texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
   return texture;
 }
 
