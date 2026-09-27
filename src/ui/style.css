@@ -15,3 +15,20 @@ body {
 canvas {
   display: block;
 }
+
+.unsupported {
+  max-width: 34rem;
+  margin: 18vh auto 0;
+  padding: 0 1.5rem;
+  line-height: 1.5;
+}
+
+.unsupported h1 {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.unsupported .reason {
+  opacity: 0.6;
+  font-size: 0.85rem;
+}
