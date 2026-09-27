@@ -1,0 +1,22 @@
+{
+  "name": "aloft",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5173",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 4173",
+    "smoke": "node tools/capture/smoke.mjs captures/smoke.png"
+  },
+  "dependencies": {
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "@types/three": "0.186.0",
+    "@webgpu/types": "0.1.74",
+    "playwright": "1.56.1",
+    "typescript": "6.0.2",
+    "vite": "8.3.1"
+  }
+}
