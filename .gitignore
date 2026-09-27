@@ -1,0 +1,11 @@
+# Local study clone of the reference project. Its license is view-only, so it must never be committed.
+reference/
+
+node_modules/
+dist/
+.DS_Store
+
+# Playwright capture output (baselines that should be kept live under references/ and docs/)
+captures/
+test-results/
+playwright-report/
