@@ -1,0 +1,17 @@
+{
+  "foam.png": {
+    "channels": {
+      "a": "breakup mask",
+      "b": "wind streaks along +U",
+      "g": "fine bubbles",
+      "r": "foam lace"
+    },
+    "colorSpace": "linear",
+    "script": "tools/blender/foam_texture.py",
+    "size": [
+      1024,
+      1024
+    ],
+    "tiling": "seamless"
+  }
+}

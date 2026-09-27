@@ -5,6 +5,7 @@ import { float, smoothstep, texture, vec3, vec4 } from 'three/tsl';
 import type { App, FrameInfo } from '../app/app';
 import type { WeatherController, WeatherState } from '../render/weather';
 import { CascadeGpu } from './fft';
+import { FoamAccumulator } from './foam';
 import { buildInitialSpectrum, cascadeBands, spectrumParamsFromWeather, type CascadeBand } from './spectrum';
 
 type F = THREE.Node<'float'>;
@@ -32,6 +33,9 @@ export class Ocean {
   readonly name = 'ocean';
   readonly bands: CascadeBand[] = cascadeBands();
   readonly cascades: CascadeGpu[];
+  /** Foam accumulates on the two largest cascades, where waves actually break. */
+  readonly foam: FoamAccumulator[];
+  private readonly foamNodes: { node: THREE.TextureNode; accumulator: FoamAccumulator }[] = [];
   private readonly weather: WeatherController;
   private readonly app: App;
 
@@ -39,6 +43,7 @@ export class Ocean {
     this.app = app;
     this.weather = weather;
     this.cascades = this.bands.map((b) => new CascadeGpu({ size: CASCADE_SIZE, patchSize: b.patchSize }));
+    this.foam = this.cascades.slice(0, 2).map((c) => new FoamAccumulator(c));
     weather.onSpectrumRebuild((state, instant) => this.rebuild(state, instant));
   }
 
@@ -56,6 +61,41 @@ export class Ocean {
     const choppiness = this.weather.state.choppiness;
     const step = frame.realDt / SPECTRUM_CROSSFADE_SECONDS;
     for (const c of this.cascades) c.update(this.app.renderer, frame.time, choppiness, step);
+    this.stepFoam(frame.realDt);
+  }
+
+  private stepFoam(dt: number): void {
+    if (dt <= 0) return;
+    for (const f of this.foam) {
+      f.setWind(this.weather.state.windSpeed);
+      f.step(this.app.renderer, Math.min(dt, 0.25));
+    }
+    for (const { node, accumulator } of this.foamNodes) node.value = accumulator.texture;
+  }
+
+  /**
+   * Builds foam history for a still capture: runs the large cascades and the foam integration over the
+   * `seconds` before the current time, then restores the current time.
+   */
+  prewarm(seconds: number, time: number): void {
+    const dt = 0.25;
+    const choppiness = this.weather.state.choppiness;
+    for (let t = time - seconds; t < time; t += dt) {
+      for (let i = 0; i < this.foam.length; i++) this.cascades[i]!.update(this.app.renderer, t, choppiness);
+      this.stepFoam(dt);
+    }
+    for (const c of this.cascades) c.update(this.app.renderer, time, choppiness);
+  }
+
+  /** Accumulated foam (x) and fresh injection (y) at undisplaced world XZ, summed over cascades. */
+  foamAmount(xz: V2): THREE.Node<'vec2'> {
+    let sum = vec4(0, 0, 0, 0).xy as THREE.Node<'vec2'>;
+    this.foam.forEach((f, i) => {
+      const node = texture(f.texture, this.uvFor(i, xz));
+      this.foamNodes.push({ node, accumulator: f });
+      sum = sum.add(node.xy) as THREE.Node<'vec2'>;
+    });
+    return sum;
   }
 
   private uvFor(i: number, xz: V2): V2 {

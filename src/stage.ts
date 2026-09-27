@@ -7,6 +7,8 @@ import { WEATHER, WeatherController } from './render/weather';
 import { Ocean } from './ocean/ocean';
 import { Clipmap } from './ocean/clipmap';
 import { createOceanMaterial } from './ocean/surface';
+import { loadDataTexture, whenLoaded } from './render/assets';
+import { FrameUniforms } from './render/frameUniforms';
 import { FramePipeline } from './render/pipeline';
 import { GradientSky } from './sky/gradient';
 
@@ -24,7 +26,16 @@ export function buildStage(app: App): Stage {
   const weather = app.addSystem(new WeatherController(WEATHER.gale));
   new GradientSky(app.scene, look);
   const ocean = app.addSystem(new Ocean(app, weather));
-  const clipmap = new Clipmap((base) => createOceanMaterial(ocean, look, base));
+  const frameUniforms = app.addSystem(new FrameUniforms());
+  const foamUrl = '/assets/tex/foam.png';
+  const foamTexture = loadDataTexture(foamUrl, {
+    script: 'tools/blender/foam_texture.py',
+    fallback: [60, 10, 30, 128],
+    repeat: true,
+  });
+  const clipmap = new Clipmap((base) =>
+    createOceanMaterial(ocean, look, weather.uniforms, frameUniforms, foamTexture, base),
+  );
   app.scene.add(clipmap.group);
   app.addSystem({ name: 'clipmap', update: () => clipmap.update(app.camera) });
   new FramePipeline(app, look);
@@ -35,6 +46,11 @@ export function buildStage(app: App): Stage {
       weather.setTarget(WEATHER[shot.bookmark.weather]);
     },
   ];
-  const prewarmHooks: PrewarmHook[] = [];
+  const prewarmHooks: PrewarmHook[] = [
+    async (seconds) => {
+      await whenLoaded([foamUrl]);
+      ocean.prewarm(seconds, app.clock.simTime);
+    },
+  ];
   return { look, lookBlender, weather, shotHooks, prewarmHooks };
 }

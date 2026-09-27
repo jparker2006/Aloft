@@ -1,9 +1,12 @@
 // Ocean surface material and geometry.
 import * as THREE from 'three/webgpu';
-import { Fn, abs, cameraPosition, dot, float, max, mix, pow, reflect, varying, vec3, vec4 } from 'three/tsl';
+import { Fn, cameraPosition, float, max, mix, varying, vec4 } from 'three/tsl';
+import type { FrameUniforms } from '../render/frameUniforms';
 import type { LookUniforms } from '../render/look';
+import type { WeatherUniforms } from '../render/weather';
 import { makeSkyRadiance } from '../sky/skyFunction';
 import type { Ocean } from './ocean';
+import { foamRadiance, makeFoamCoverage, makeSeaShading } from './shading';
 
 type V3 = THREE.Node<'vec3'>;
 
@@ -14,10 +17,14 @@ type V3 = THREE.Node<'vec3'>;
 export function createOceanMaterial(
   ocean: Ocean,
   look: LookUniforms,
+  weather: WeatherUniforms,
+  frame: FrameUniforms,
+  foamTexture: THREE.Texture,
   basePosition: V3,
 ): THREE.MeshBasicNodeMaterial {
   const material = new THREE.MeshBasicNodeMaterial();
-  const sky = makeSkyRadiance(look);
+  const shade = makeSeaShading(look, weather, makeSkyRadiance(look));
+  const foamCoverage = makeFoamCoverage(foamTexture, weather);
 
   // Vertex: undisplaced world XZ -> displaced world position. Meshes keep an identity transform.
   const baseXZ = basePosition.xz;
@@ -31,19 +38,14 @@ export function createOceanMaterial(
   material.colorNode = Fn(() => {
     const toCamera = cameraPosition.sub(worldPos);
     const distance = toCamera.length();
-    const v = toCamera.div(distance);
-    const n = ocean.normalFromSlopes(ocean.slopes(gridXZ, distance));
-    const nDotV = max(dot(n, v), 0.001);
-    const fresnel = float(0.02).add(float(0.98).mul(pow(float(1).sub(nDotV), 5)));
-    const r = reflect(v.negate(), n) as V3;
-    const rUp = vec3(r.x, abs(r.y), r.z);
-    const reflection = sky(rUp);
-    const sunSpec = pow(max(dot(rUp, look.keyDirection), 0), 600)
-      .mul(look.u.keyIntensity)
-      .mul(40);
-    const water = look.u.waterDeep.add(look.u.waterScatter.mul(0.08));
-    const color = mix(water, reflection, fresnel).add(look.u.keyColor.mul(sunSpec).mul(fresnel));
-    return vec4(color, 1);
+    const view = toCamera.div(distance) as V3;
+    const normal = ocean.normalFromSlopes(ocean.slopes(gridXZ, distance));
+    const sea = shade({ normal, view, distance, height: worldPos.y, gridXZ, time: frame.time });
+    const coverage = foamCoverage({ amount: ocean.foamAmount(gridXZ), gridXZ, normal, view });
+    // Foam also sits on the crest glow: it is lit from behind like the water it rides on.
+    const foam = foamRadiance(look, normal, view);
+    const color = mix(sea, foam, coverage.mul(float(0.92)));
+    return vec4(max(color, float(0)), 1);
   })();
   return material;
 }
