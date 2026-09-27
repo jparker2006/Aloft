@@ -44,11 +44,11 @@ export interface WeatherState {
 export type WeatherKey = keyof WeatherState;
 
 /**
- * Waves run toward the hero bearing, so the wind blows from the opposite side.
+ * The wind blows from the hero bearing (the dusk sun), so waves run toward the low cameras.
  * Peak periods describe a young, steep storm sea (Hs / peak wavelength near 0.05), not a fully developed
  * one: the long, gentle swell of a fully developed sea reads as calm water from deck height.
  */
-const WIND_FROM = 100;
+const WIND_FROM = 280;
 
 export const WEATHER: Readonly<Record<WeatherName, WeatherState>> = {
   rising: {

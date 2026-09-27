@@ -599,7 +599,7 @@ Audio cues double as gameplay warnings (dismast groan, lashing creak), so they m
 
 | Bookmark | Milestone | Camera | References |
 |---|---|---|---|
-| `sea_low` | 1 | 2 m above the surface, looking downwind into breaking crests | `dusk__sea_low`, `night__sea_low`, `night__sea_low__flash` |
+| `sea_low` | 1 | Low in a trough (camera 1 m above mean sea level), looking upwind toward the low sun into an approaching crest | `dusk__sea_low`, `night__sea_low`, `night__sea_low__flash` |
 | `sea_high` | 1 | 25 m up, looking across the swell toward the sun or moon bearing | `dusk__sea_high` |
 | `horizon_lightning` | 1 | 6 m up, facing a strike seeded at 4 km | `night__horizon_lightning__flash` |
 | `storm_sky` | 1 | 8 m up, pitched 15 degrees up, facing the cloud gap | `dusk__storm_sky` |

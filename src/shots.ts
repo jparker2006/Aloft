@@ -21,16 +21,21 @@ export interface Bookmark {
   strike?: { bearing: number; distance: number };
 }
 
-/** Bearing the dusk sun and the hero wind are arranged around. Waves run toward the sunset. */
+/**
+ * Bearing of the dusk sun. The hero wind blows from the same side, so waves run toward the low cameras
+ * with the sun behind their crests (the backlit look of dusk__sea_low).
+ */
 export const HERO_BEARING = 280;
 
 export const BOOKMARKS: Readonly<Record<string, Bookmark>> = {
   sea_low: {
     name: 'sea_low',
     milestone: 1,
-    camera: { position: [0, 2, 0], bearing: HERO_BEARING, pitch: 2 },
+    // Low in a trough, looking upwind toward the low sun at a crest rising about 40 m ahead
+    // (time chosen with the CPU reference sum of the two largest cascades).
+    camera: { position: [0, 1, 0], bearing: HERO_BEARING, pitch: 4 },
     weather: 'gale',
-    time: 40,
+    time: 16.5,
   },
   sea_high: {
     name: 'sea_high',

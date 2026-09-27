@@ -12,6 +12,8 @@
 //   --run name          output folder name under captures/ (default: a timestamp)
 //   --update-baseline   write these captures as the new baselines
 //   --critique id       write docs/critiques/<id>.jpg (sheet) and a <id>.md template if missing
+//   --root dir          serve the app from a snapshot of the tree (see npm run capture:snapshot), so the
+//                       working tree can keep changing while a slow capture runs
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -38,15 +40,18 @@ const { values: args } = parseArgs({
     run: { type: 'string' },
     'update-baseline': { type: 'boolean', default: false },
     critique: { type: 'string' },
+    root: { type: 'string' },
   },
 });
+const SERVE_ROOT = args.root ? resolve(args.root) : ROOT;
 
 const runName = args.run ?? new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
 const outDir = join(ROOT, 'captures', runName);
 mkdirSync(outDir, { recursive: true });
 
 const server = await createServer({
-  root: ROOT,
+  root: SERVE_ROOT,
+  configFile: join(SERVE_ROOT, 'vite.config.ts'),
   server: { host: '127.0.0.1', port: 0 },
   logLevel: 'error',
 });

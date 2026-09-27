@@ -18,7 +18,8 @@
     "prepare": "git config core.hooksPath .githooks || true",
     "capture": "node tools/capture/capture.mjs",
     "test:gpu": "node tools/capture/gpu-tests.mjs",
-    "baseline": "node tools/capture/baseline.mjs"
+    "baseline": "node tools/capture/baseline.mjs",
+    "capture:snapshot": "bash tools/capture/snapshot.sh"
   },
   "dependencies": {
     "three": "0.186.1"
