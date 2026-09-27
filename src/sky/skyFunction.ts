@@ -11,7 +11,12 @@ export function makeSkyRadiance(look: LookUniforms) {
   return Fn(([dirIn]: [V3]) => {
     const dir = dirIn.normalize();
     const up = max(dir.y, 0);
-    const base = mix(look.u.skyHorizon, look.u.skyZenith, pow(up, 0.45));
+    // Only the horizon toward the key light glows; the rest of the rim is rain haze under the deck.
+    const flat = dir.xz.div(max(dir.xz.length(), 1e-4));
+    const keyFlat = look.keyDirection.xz.div(max(look.keyDirection.xz.length(), 1e-4));
+    const sunward = pow(dot(flat, keyFlat).mul(0.5).add(0.5), 3);
+    const horizon = mix(look.u.skyHorizonAway, look.u.skyHorizon, sunward);
+    const base = mix(horizon, look.u.skyZenith, pow(up, 0.45));
     // Warm glow around the key light near the horizon.
     const cosSun = max(dot(dir, look.keyDirection), 0);
     const glow = look.u.keyColor
@@ -22,6 +27,6 @@ export function makeSkyRadiance(look: LookUniforms) {
     // Below the horizon the sky is never seen directly, but reflections of it must stay dark and neutral.
     const below = smoothstep(0.0, -0.08, dir.y);
     const radiance = base.add(glow.mul(horizonBand)).add(look.u.keyColor.mul(disc));
-    return mix(radiance, look.u.skyHorizon.mul(0.6), below) as unknown as V3;
+    return mix(radiance, horizon.mul(0.6), below) as unknown as V3;
   });
 }

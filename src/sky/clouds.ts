@@ -57,9 +57,14 @@ export const CLOUD_QUALITY: Record<'low' | 'med' | 'high', CloudQuality> = {
   high: { deckSteps: 28, scudSteps: 8 },
 };
 
-const SHAPE_SCALE = 9000;
-const SHAPE_SCALE_Y = 5000;
-const DETAIL_SCALE = 1300;
+const SHAPE_SCALE = 7000;
+const SHAPE_SCALE_Y = 3000;
+const DETAIL_SCALE = 620;
+/** Fraction of the deck thickness over which density ramps in above the local base. */
+const UNDERSIDE = 0.12;
+/** Billows and pouches of the underside: a Worley height field this deep, with cells this wide / 8. */
+const LUMP_DEPTH = 480;
+const LUMP_SCALE = 6400;
 const SCUD_BASE = 160;
 const SCUD_TOP = 390;
 const DECK_SPEED = 16;
@@ -67,6 +72,26 @@ const SCUD_SPEED = 28;
 const MAX_DISTANCE = 45000;
 /** Distance over which clouds dissolve into the horizon sky. */
 const AERIAL_DISTANCE = 32000;
+/** Two-stream diffusion through a thick, forward-scattering slab: T = 1 / (1 + k * opticalDepth). */
+const DIFFUSION_K = 0.12;
+/** Sky and sun irradiance on the deck top that diffuses down to the base, relative to the look's ambient. */
+const TOP_AMBIENT = 1.35;
+const TOP_KEY = 0.004;
+/** Low sunlight entering under the deck through the gap and lighting the base from below. */
+const UNDERLIGHT = 0.2;
+/** Optical depth of the deck between a sample and the gap, per unit of blocking coverage (two probes). */
+const FAR_OCCLUSION = 10;
+
+const toF = (x: number | F): F => (typeof x === 'number' ? (float(x) as F) : x);
+
+function remap(v: F, a: number | F, b: number | F, c: number, d: number): F {
+  return float(c).add(
+    v
+      .sub(a)
+      .div(toF(b).sub(a))
+      .mul(d - c),
+  ) as F;
+}
 
 /** Henyey-Greenstein phase function. */
 function hg(cosTheta: F, g: number): F {
@@ -88,6 +113,7 @@ export class StormClouds {
   private readonly prevViewProj = uniform(new THREE.Matrix4());
   private readonly cameraPos = uniform(new THREE.Vector3());
   private readonly jitter = uniform(0);
+  private readonly rawSize = uniform(new THREE.Vector2(1, 1));
   private readonly blend = uniform(1);
   private readonly accumulated = { frames: 0 };
   private lastViewProj = new THREE.Matrix4();
@@ -149,6 +175,7 @@ export class StormClouds {
     const w = Math.max(1, Math.ceil(width / 2));
     const h = Math.max(1, Math.ceil(height / 2));
     this.raw.setSize(w, h);
+    this.rawSize.value.set(w, h);
     this.history[0].setSize(w, h);
     this.history[1].setSize(w, h);
     this.accumulated.frames = 0;
@@ -178,62 +205,142 @@ export class StormClouds {
       .sub(smoothstep(this.look.u.cloudGapWidth.mul(0.35), this.look.u.cloudGapWidth, dBearing))
       .mul(smoothstep(6000, 14000, dist));
     return this.look.u.cloudCoverage.mul(
-      float(1).sub(inGap.mul(this.look.u.cloudGapStrength).mul(0.85)),
+      float(1).sub(inGap.mul(this.look.u.cloudGapStrength).mul(0.7)),
     ) as F;
   }
 
+  /** Height fraction through the deck, 0 at the lowest pouches and 1 at the top. */
+  private deckHeight(p: V3): F {
+    return saturate(p.y.sub(this.weather.cloudBase).div(this.look.u.cloudThickness)) as F;
+  }
+
+  /**
+   * Local base height: inverted Worley cells hang pouches and rolls below the deck (lowest at cell
+   * centres), two octaves so large rolls carry smaller pouches.
+   */
+  private localBase(p: V3, offset: V2): F {
+    const q = vec3(p.x.sub(offset.x).div(LUMP_SCALE), 0.37, p.z.sub(offset.y).div(LUMP_SCALE));
+    const n = texture3D(this.noise.shape, q).level(float(0));
+    const cells = n.g.mul(0.65).add(n.b.mul(0.35));
+    return this.weather.cloudBase.add(float(1).sub(cells).mul(LUMP_DEPTH)) as F;
+  }
+
+  /**
+   * Deck density (after Schneider 2015): Perlin-Worley dilated by Worley fBm, a height profile that
+   * starts at the lumpy local base, then coverage, then detail erosion that is wispy at the base and
+   * billowy above.
+   */
   private deckDensity(p: V3, withDetail: boolean): F {
-    const base = this.weather.cloudBase;
-    const thickness = this.look.u.cloudThickness;
-    const h = saturate(p.y.sub(base).div(thickness));
-    const profile = smoothstep(0, 0.1, h).mul(smoothstep(1, 0.45, h));
-    const offset = this.weather.windDir.mul(this.frame.time.mul(DECK_SPEED));
+    const h = this.deckHeight(p);
+    const offset = this.weather.windDir.mul(this.frame.time.mul(DECK_SPEED)) as V2;
+    const above = p.y.sub(this.localBase(p, offset)).div(this.look.u.cloudThickness);
+    const profile = smoothstep(0, UNDERSIDE, above).mul(smoothstep(1, 0.62, h));
     const q = vec3(
       p.x.sub(offset.x).div(SHAPE_SCALE),
       p.y.div(SHAPE_SCALE_Y),
       p.z.sub(offset.y).div(SHAPE_SCALE),
     );
     const s = texture3D(this.noise.shape, q).level(float(0));
-    const fbm = s.r.mul(0.62).add(s.g.mul(0.25)).add(s.b.mul(0.13));
+    const worleyFbm = s.g.mul(0.625).add(s.b.mul(0.25)).add(s.a.mul(0.125));
+    const shape = saturate(remap(s.r as F, worleyFbm.sub(1) as F, 1, 0, 1));
     const cov = this.coverageAt(p);
-    let d = saturate(fbm.mul(profile).sub(cov.oneMinus()).div(cov.max(0.05))) as F;
+    let d = saturate(remap(shape.mul(profile) as F, cov.oneMinus() as F, 1, 0, 1)).mul(cov) as F;
     if (withDetail) {
-      const dq = p.div(DETAIL_SCALE).add(vec3(0, this.frame.time.mul(0.004), 0));
+      const dq = vec3(p.x.sub(offset.x), p.y.add(this.frame.time.mul(3)), p.z.sub(offset.y)).div(DETAIL_SCALE);
       const det = texture3D(this.noise.detail, dq).level(float(0));
-      const erosion = det.r.mul(0.6).add(det.g.mul(0.3)).add(det.b.mul(0.1));
-      d = saturate(d.sub(erosion.mul(0.28).mul(float(1).sub(d)))) as F;
+      const hf = det.r.mul(0.625).add(det.g.mul(0.25)).add(det.b.mul(0.125));
+      const erosion = mix(hf, hf.oneMinus(), saturate(h.mul(5)));
+      d = saturate(remap(d, erosion.mul(0.5) as F, 1, 0, 1)) as F;
     }
     return d.mul(this.look.u.cloudDensity) as F;
   }
 
-  private scudDensity(p: V3): F {
+  /** Ragged scud beneath the deck, torn by the wind (stretched downwind) and eroded by detail noise. */
+  private scudDensity(p: V3, withDetail: boolean): F {
     const h = saturate(p.y.sub(SCUD_BASE).div(SCUD_TOP - SCUD_BASE));
     const profile = smoothstep(0, 0.35, h).mul(smoothstep(1, 0.4, h));
     const offset = this.weather.windDir.mul(this.frame.time.mul(SCUD_SPEED));
     const q = vec3(p.x.sub(offset.x).div(2600), p.y.div(1500), p.z.sub(offset.y).div(1800));
     const s = texture3D(this.noise.shape, q).level(float(0));
     const fbm = s.r.mul(0.55).add(s.g.mul(0.3)).add(s.a.mul(0.15));
-    const cov = this.look.u.cloudCoverage.mul(0.62);
-    const d = saturate(fbm.mul(profile).sub(cov.oneMinus()).div(cov));
+    const cov = this.look.u.cloudCoverage.mul(0.7);
+    let d = saturate(fbm.mul(profile).sub(cov.oneMinus()).div(cov)) as F;
+    if (withDetail) {
+      const dq = vec3(p.x.sub(offset.x), p.y, p.z.sub(offset.y)).div(DETAIL_SCALE * 0.45);
+      const det = texture3D(this.noise.detail, dq).level(float(0));
+      const hf = det.r.mul(0.625).add(det.g.mul(0.25)).add(det.b.mul(0.125));
+      d = saturate(remap(d, hf.mul(0.6) as F, 1, 0, 1)) as F;
+    }
     return d.mul(this.look.u.cloudDensity).mul(0.7) as F;
   }
 
-  /** Light reaching a point from the key light through the deck (three samples toward the light). */
-  private lightTransmittance(p: V3): F {
+  /** Scud self-shadowing toward the key light, plus the deck above it. */
+  private scudKeyOpticalDepth(p: V3): F {
     const L = this.look.keyDirection;
-    const od = this.deckDensity(p.add(L.mul(70)), false)
-      .mul(140)
-      .add(this.deckDensity(p.add(L.mul(260)), false).mul(260))
-      .add(this.deckDensity(p.add(L.mul(700)), false).mul(640));
-    return od as F;
+    return this.scudDensity(p.add(L.mul(40)), false)
+      .mul(80)
+      .add(this.scudDensity(p.add(L.mul(160)), false).mul(240))
+      .add(this.keyOpticalDepth(p)) as F;
   }
 
-  /** In-scattered radiance at a sample from the key light and the ambient sky. */
+  /** Optical depth from a point toward the key light (two samples, no detail). */
+  private keyOpticalDepth(p: V3): F {
+    const L = this.look.keyDirection;
+    return this.deckDensity(p.add(L.mul(120)), false)
+      .mul(200)
+      .add(this.deckDensity(p.add(L.mul(520)), false).mul(600)) as F;
+  }
+
+  /** Optical depth from a point straight up through the deck (two samples, no detail). */
+  private upOpticalDepth(p: V3): F {
+    return this.deckDensity(p.add(vec3(0, 70, 0)), false)
+      .mul(140)
+      .add(this.deckDensity(p.add(vec3(0, 300, 0)), false).mul(400)) as F;
+  }
+
+  /**
+   * The low sun crosses kilometres of deck before reaching most samples: probe the coverage field
+   * (cheap, no texture reads) along the key direction and treat covered stretches as opaque. Only cloud
+   * near the gap sees the sun directly.
+   */
+  private farOcclusion(p: V3): F {
+    const L = this.look.keyDirection;
+    const flat = vec3(L.x, 0, L.z).normalize();
+    const block = (distance: number) =>
+      smoothstep(0.35, 0.8, this.coverageAt(p.add(flat.mul(distance)) as V3)) as F;
+    return block(2500).add(block(7000)).mul(FAR_OCCLUSION) as F;
+  }
+
+  /** Irradiance on the deck top that diffuses down through it. */
+  private topLight(): V3 {
+    const u = this.look.u;
+    return u.ambient.mul(TOP_AMBIENT).add(u.keyColor.mul(u.keyIntensity).mul(u.cloudLight).mul(TOP_KEY)) as V3;
+  }
+
+  /**
+   * Low sunlight under the deck: brightest on bases toward the key light and toward the gap, fading
+   * with height into the cloud. Zero without a gap (night).
+   */
+  private underLight(p: V3, lowness: F): V3 {
+    const u = this.look.u;
+    const rel = p.xz.sub(this.cameraPos.xz);
+    const dist = rel.length();
+    const keyFlat = this.look.keyDirection.xz.div(max(this.look.keyDirection.xz.length(), 1e-4));
+    const sunward = pow(saturate(dot(rel.div(max(dist, 1)), keyFlat)), 8);
+    const reach = smoothstep(3500, 12000, dist);
+    return u.keyColor
+      .mul(u.keyIntensity)
+      .mul(u.cloudLight)
+      .mul(sunward.mul(reach).mul(lowness).mul(u.cloudGapStrength).mul(UNDERLIGHT)) as V3;
+  }
+
+  /** In-scattered radiance at a sample: direct key light, diffuse light through the deck, light from below. */
   private sampleLight(p: V3, density: F, dir: V3, isDeck: boolean): V3 {
+    const u = this.look.u;
     const L = this.look.keyDirection;
     const cosTheta = dot(dir, L);
-    const od = this.lightTransmittance(p);
-    // Multiple-scattering approximation: three octaves with weaker extinction and flatter phase.
+    const odKey = (isDeck ? this.keyOpticalDepth(p) : this.scudKeyOpticalDepth(p)).add(this.farOcclusion(p));
+    // Multiple-scattering approximation (Wrenninge): octaves with weaker extinction and flatter phase.
     let direct: F = float(0);
     const octaves = [
       [1, 1, 1],
@@ -242,18 +349,21 @@ export class StormClouds {
     ] as const;
     for (const [a, b, c] of octaves) {
       const phase = mix(hg(cosTheta, 0.6 * c), hg(cosTheta, -0.25 * c), 0.3);
-      direct = direct.add(exp(od.mul(-b)).mul(phase).mul(a)) as F;
+      direct = direct.add(exp(odKey.mul(-b)).mul(phase).mul(a)) as F;
     }
-    const powder = float(1).sub(exp(density.mul(-2 * 60)));
-    const key = this.look.u.keyColor
-      .mul(this.look.u.keyIntensity)
-      .mul(this.look.u.cloudLight)
-      .mul(direct.mul(powder.mul(0.6).add(0.4)).mul(4 * Math.PI * 0.25));
-    const height = isDeck
-      ? saturate(p.y.sub(this.weather.cloudBase).div(this.look.u.cloudThickness))
-      : float(0.2);
-    const ambient = mix(this.look.u.cloudShadow, this.look.u.ambient.mul(6), height.mul(0.7));
-    return key.add(ambient).add(this.flashLight(p)) as V3;
+    const powder = float(1).sub(exp(density.mul(-120)));
+    const key = u.keyColor
+      .mul(u.keyIntensity)
+      .mul(u.cloudLight)
+      .mul(direct.mul(powder.mul(0.6).add(0.4)).mul(Math.PI));
+    const h = isDeck ? this.deckHeight(p) : (float(0) as F);
+    const odUp = isDeck ? this.upOpticalDepth(p) : this.upOpticalDepth(vec3(p.x, this.weather.cloudBase, p.z) as V3);
+    // Lumps hanging low under the deck sit in its shadow; the base between them, higher up, is lighter.
+    const depthShade = isDeck ? mix(float(0.16), float(1), smoothstep(0, 0.4, h)) : float(0.35);
+    const diffuse = this.topLight().div(float(1).add(odUp.mul(DIFFUSION_K))).mul(depthShade);
+    const lowness = isDeck ? (float(1).sub(h).pow(3) as F) : (float(0.2) as F);
+    const below = u.cloudShadow.add(this.underLight(p, lowness));
+    return key.add(diffuse).add(below).add(this.flashLight(p)) as V3;
   }
 
   /** Light from a lightning strike inside the deck: a point source seen through scattering cloud. */
@@ -275,22 +385,30 @@ export class StormClouds {
 
       If(dir.y.greaterThan(0.003), () => {
         // Interleaved-gradient-noise jitter per pixel and frame.
-        const px = uv().mul(vec2(1024, 768));
-        const jitter = fract(fract(dot(px, vec2(0.06711056, 0.00583715)).add(this.jitter)).mul(52.9829189));
+        const px = uv().mul(this.rawSize).floor();
+        // Interleaved gradient noise per pixel, shifted by a golden-ratio sequence per frame so the
+        // accumulated frames stratify each pixel's sample offsets.
+        const ign = fract(fract(dot(px, vec2(0.06711056, 0.00583715))).mul(52.9829189));
+        const jitter = fract(ign.add(this.jitter));
 
         const march = (bottom: number | F, top: number | F, steps: THREE.Node<'int'>, deck: boolean) => {
           const toF = (x: number | F): F => (typeof x === 'number' ? (float(x) as F) : x);
           const t0 = max(toF(bottom).sub(this.cameraPos.y).div(dir.y), 0);
           const t1 = min(toF(top).sub(this.cameraPos.y).div(dir.y), MAX_DISTANCE);
           If(t1.greaterThan(t0), () => {
-            const dt = t1.sub(t0).div(float(steps));
+            // Quadratic step distribution: short steps where the ray enters the layer (the base is what
+            // the camera sees), longer ones deeper in, where little light gets back out.
+            const span = t1.sub(t0);
+            const n = float(steps);
             Loop({ start: 0, end: steps, type: 'int', condition: '<' }, ({ i }: { i: THREE.Node<'int'> }) => {
               If(transmittance.lessThan(0.02), () => {
                 Break();
               });
-              const t = t0.add(float(i).add(jitter).mul(dt));
+              const s = float(i).add(jitter).div(n);
+              const t = t0.add(span.mul(s.mul(s)));
+              const dt = span.mul(s.mul(2).add(1 / 64)).div(n);
               const p = this.cameraPos.add(dir.mul(t));
-              const density = deck ? this.deckDensity(p, true) : this.scudDensity(p);
+              const density = deck ? this.deckDensity(p, true) : this.scudDensity(p, true);
               If(density.greaterThan(0.0001), () => {
                 firstHit.assign(min(firstHit, t));
                 const scatter = this.sampleLight(p, density, dir, deck).mul(density);
@@ -356,14 +474,9 @@ export class StormClouds {
       const od = density.mul(this.look.u.cloudThickness).mul(0.35).mul(slant);
       const aerial = exp(t.div(-AERIAL_DISTANCE));
       const cover = float(1).sub(exp(od.negate())).mul(aerial);
-      const lightThrough = exp(this.lightTransmittance(p).negate());
-      const cloudColor = this.look.u.cloudShadow.add(
-        this.look.u.keyColor
-          .mul(this.look.u.keyIntensity)
-          .mul(this.look.u.cloudLight)
-          .mul(lightThrough)
-          .mul(0.12),
-      );
+      const u = this.look.u;
+      const diffuse = this.topLight().div(float(1).add(od.mul(2).mul(DIFFUSION_K)));
+      const cloudColor = u.cloudShadow.add(diffuse).add(this.underLight(p, float(0.6) as F));
       return mix(sky(dir), cloudColor, cover) as V3;
     };
   }

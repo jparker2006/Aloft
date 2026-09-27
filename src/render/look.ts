@@ -23,6 +23,8 @@ export interface Look {
 
   // Sky dome under and around the clouds.
   skyHorizon: Vec3;
+  /** Horizon color facing away from the key light (under an overcast, only the sunward side glows). */
+  skyHorizonAway: Vec3;
   skyZenith: Vec3;
   /** Diffuse fill from the overcast sky, linear irradiance. */
   ambient: Vec3;
@@ -83,6 +85,7 @@ export const DEFAULT_LOOK: Readonly<Look> = Object.freeze<Look>({
   keyDiscIntensity: 40,
 
   skyHorizon: srgbHex(0x6d7680),
+  skyHorizonAway: srgbHex(0x6d7680),
   skyZenith: srgbHex(0x2a3038),
   ambient: [0.06, 0.07, 0.08],
 
@@ -128,13 +131,14 @@ export const PRESETS: Readonly<Record<PresetName, Partial<Look>>> = {
     keyIntensity: 4,
     keyDiscIntensity: 60,
     skyHorizon: srgbHex(0xc0643a),
+    skyHorizonAway: srgbHex(0x4c4846),
     skyZenith: srgbHex(0x1b1f27),
     ambient: [0.05, 0.055, 0.065],
-    cloudCoverage: 0.86,
+    cloudCoverage: 0.94,
     cloudGapWidth: 38,
     cloudGapStrength: 1,
     cloudLight: [1, 0.62, 0.36],
-    cloudShadow: [0.07, 0.075, 0.085],
+    cloudShadow: [0.016, 0.017, 0.02],
     fogColor: srgbHex(0x6b5a50),
     splitShadows: [0, 0.01, 0.015],
     splitHighlights: [0.02, 0.01, 0],
@@ -146,11 +150,12 @@ export const PRESETS: Readonly<Record<PresetName, Partial<Look>>> = {
     keyIntensity: 0.04,
     keyDiscIntensity: 0,
     skyHorizon: srgbHex(0x10141b),
+    skyHorizonAway: srgbHex(0x10141b),
     skyZenith: srgbHex(0x030406),
     ambient: [0.004, 0.005, 0.007],
-    cloudCoverage: 0.95,
+    cloudCoverage: 0.96,
     cloudLight: [0.6, 0.7, 0.9],
-    cloudShadow: [0.004, 0.005, 0.007],
+    cloudShadow: [0.0015, 0.0018, 0.0025],
     fogColor: srgbHex(0x0c1016),
     fogDensity: 0.00024,
     exposure: 1.6,
