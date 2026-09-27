@@ -15,7 +15,8 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "check": "npm run typecheck && npm run lint && npm test",
-    "prepare": "git config core.hooksPath .githooks || true"
+    "prepare": "git config core.hooksPath .githooks || true",
+    "capture": "node tools/capture/capture.mjs"
   },
   "dependencies": {
     "three": "0.186.1"
@@ -23,11 +24,14 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@types/node": "22.20.4",
+    "@types/pngjs": "6.0.5",
     "@types/three": "0.186.0",
     "@webgpu/types": "0.1.74",
     "eslint": "10.11.0",
     "globals": "17.12.0",
+    "jpeg-js": "0.4.4",
     "playwright": "1.56.1",
+    "pngjs": "7.0.0",
     "prettier": "3.8.1",
     "typescript": "6.0.2",
     "typescript-eslint": "8.70.1",

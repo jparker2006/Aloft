@@ -3,6 +3,8 @@ import { App } from './app/app';
 import { checkWebGPU } from './app/gate';
 import { parseParams } from './app/params';
 import { loadSettings } from './app/settings';
+import { runShot, type PrewarmHook, type ShotHook } from './app/shot';
+import { GradientSky } from './sky/gradient';
 import { showUnsupported } from './ui/unsupported';
 
 async function boot(): Promise<void> {
@@ -26,7 +28,21 @@ async function boot(): Promise<void> {
     return;
   }
   (window as unknown as { __app?: App }).__app = app;
-  app.start();
+
+  const shotHooks: ShotHook[] = [];
+  const prewarmHooks: PrewarmHook[] = [];
+
+  const sky = new GradientSky(app.scene);
+  sky.setPreset(params.preset ?? 'dusk');
+  shotHooks.push((shot) => sky.setPreset(shot.preset));
+
+  if (params.shot) {
+    await runShot(app, { shot: shotHooks, prewarm: prewarmHooks });
+  } else {
+    app.camera.position.set(0, 4, 0);
+    app.camera.lookAt(0, 4, -1);
+    app.start();
+  }
 }
 
 void boot();
