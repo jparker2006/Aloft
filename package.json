@@ -16,7 +16,9 @@
     "test": "vitest run",
     "check": "npm run typecheck && npm run lint && npm test",
     "prepare": "git config core.hooksPath .githooks || true",
-    "capture": "node tools/capture/capture.mjs"
+    "capture": "node tools/capture/capture.mjs",
+    "test:gpu": "node tools/capture/gpu-tests.mjs",
+    "baseline": "node tools/capture/baseline.mjs"
   },
   "dependencies": {
     "three": "0.186.1"

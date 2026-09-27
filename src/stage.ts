@@ -4,6 +4,9 @@ import type { App } from './app/app';
 import type { PrewarmHook, ShotHook } from './app/shot';
 import { LookBlender, LookUniforms, resolvePreset } from './render/look';
 import { WEATHER, WeatherController } from './render/weather';
+import { Ocean } from './ocean/ocean';
+import { createOceanMaterial, createTestGrid } from './ocean/surface';
+import { FramePipeline } from './render/pipeline';
 import { GradientSky } from './sky/gradient';
 
 export interface Stage {
@@ -19,6 +22,9 @@ export function buildStage(app: App): Stage {
   const lookBlender = app.addSystem(new LookBlender(look));
   const weather = app.addSystem(new WeatherController(WEATHER.gale));
   new GradientSky(app.scene, look);
+  const ocean = app.addSystem(new Ocean(app, weather));
+  app.scene.add(createTestGrid(createOceanMaterial(ocean, look)));
+  new FramePipeline(app, look);
 
   const shotHooks: ShotHook[] = [
     (shot) => {

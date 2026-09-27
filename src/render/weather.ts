@@ -43,7 +43,11 @@ export interface WeatherState {
 
 export type WeatherKey = keyof WeatherState;
 
-/** Waves run toward the hero bearing, so the wind blows from the opposite side. */
+/**
+ * Waves run toward the hero bearing, so the wind blows from the opposite side.
+ * Peak periods describe a young, steep storm sea (Hs / peak wavelength near 0.05), not a fully developed
+ * one: the long, gentle swell of a fully developed sea reads as calm water from deck height.
+ */
 const WIND_FROM = 100;
 
 export const WEATHER: Readonly<Record<WeatherName, WeatherState>> = {
@@ -53,7 +57,7 @@ export const WEATHER: Readonly<Record<WeatherName, WeatherState>> = {
     gustAmplitude: 0.25,
     gustPeriod: 14,
     hs: 4,
-    peakPeriod: 9,
+    peakPeriod: 7.5,
     spreading: 6,
     swellHs: 1.6,
     swellPeriod: 12,
@@ -73,7 +77,7 @@ export const WEATHER: Readonly<Record<WeatherName, WeatherState>> = {
     gustAmplitude: 0.3,
     gustPeriod: 12,
     hs: 7,
-    peakPeriod: 11.5,
+    peakPeriod: 9.5,
     spreading: 8,
     swellHs: 2.5,
     swellPeriod: 14,
@@ -93,7 +97,7 @@ export const WEATHER: Readonly<Record<WeatherName, WeatherState>> = {
     gustAmplitude: 0.35,
     gustPeriod: 10,
     hs: 10,
-    peakPeriod: 13.5,
+    peakPeriod: 11.5,
     spreading: 10,
     swellHs: 3.5,
     swellPeriod: 15,
@@ -113,7 +117,7 @@ export const WEATHER: Readonly<Record<WeatherName, WeatherState>> = {
     gustAmplitude: 0.25,
     gustPeriod: 14,
     hs: 6,
-    peakPeriod: 11,
+    peakPeriod: 9,
     spreading: 7,
     swellHs: 2.5,
     swellPeriod: 14,
