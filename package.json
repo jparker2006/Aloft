@@ -7,16 +7,31 @@
     "dev": "vite --host 127.0.0.1 --port 5173",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
-    "smoke": "node tools/capture/smoke.mjs captures/smoke.png"
+    "smoke": "node tools/capture/smoke.mjs captures/smoke.png",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint . && node scripts/check-no-em-dash.mjs",
+    "lint:dash": "node scripts/check-no-em-dash.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run lint && npm test",
+    "prepare": "git config core.hooksPath .githooks || true"
   },
   "dependencies": {
     "three": "0.186.1"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "22.20.4",
     "@types/three": "0.186.0",
     "@webgpu/types": "0.1.74",
+    "eslint": "10.11.0",
+    "globals": "17.12.0",
     "playwright": "1.56.1",
+    "prettier": "3.8.1",
     "typescript": "6.0.2",
-    "vite": "8.3.1"
+    "typescript-eslint": "8.70.1",
+    "vite": "8.3.1",
+    "vitest": "5.0.2"
   }
 }
