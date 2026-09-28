@@ -76,8 +76,18 @@ export function applyRung(tier: QualityLevel, rung: number): QualityLevel {
   return q;
 }
 
-/** Tier from a benchmark's mean GPU (or frame) time in milliseconds. */
-export function tierFromBenchmark(meanMs: number): Tier {
+/**
+ * Tier from a benchmark's mean time in milliseconds. With GPU timestamps the thresholds leave headroom
+ * under the 16.6 ms budget. Without them (Safari) only the frame time is known, and it is locked to the
+ * display's refresh, so a frame that keeps up with vsync says nothing about headroom: start high and
+ * let the ladder step down if needed.
+ */
+export function tierFromBenchmark(meanMs: number, gpuTiming = true): Tier {
+  if (!gpuTiming) {
+    if (meanMs < 18) return 'high';
+    if (meanMs < 26) return 'med';
+    return 'low';
+  }
   if (meanMs < 9) return 'high';
   if (meanMs < 14) return 'med';
   return 'low';

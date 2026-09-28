@@ -40,7 +40,7 @@ export class PerformanceController {
     const setting = app.settings.quality;
     const forced = p.quality ?? (setting !== 'auto' ? setting : null);
     this.forcedTier = forced !== null || p.shot !== null;
-    this.tier = forced ?? (p.shot ? 'high' : 'high');
+    this.tier = forced ?? 'high';
     this.benchmark = this.forcedTier ? null : { elapsed: 0, samples: [] };
     this.level = this.withOverrides(TIERS[this.tier]);
     targets.apply(this.level);
@@ -76,7 +76,7 @@ export class PerformanceController {
       if (this.benchmark.elapsed >= BENCHMARK_SECONDS) {
         const samples = this.benchmark.samples.slice(Math.floor(this.benchmark.samples.length / 4));
         const mean = samples.reduce((a, b) => a + b, 0) / Math.max(samples.length, 1);
-        this.tier = tierFromBenchmark(mean);
+        this.tier = tierFromBenchmark(mean, this.gpuMs !== null);
         this.benchmark = null;
         this.level = this.withOverrides(TIERS[this.tier]);
         this.targets.apply(this.level);

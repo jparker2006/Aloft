@@ -690,7 +690,7 @@ Audio cues double as gameplay warnings (dismast groan, lashing creak), so they m
 | Act lengths | 7, 7, 6 and 5 minutes | Milestone 5 |
 | Control bindings | Section 9 tables | Milestone 2 playtest |
 | Distance to lighthouse is authored per act, not simulated | Yes | Milestone 5 |
-| Tone mapper | AgX vs ACES-fitted, by capture | Milestone 1 |
+| Tone mapper | **Decided: ACES-fitted** (critique 0013). Against the references at dusk it gives deeper blacks (p05 0.11 vs AgX 0.16, reference 0.09), more saturated gap light (0.25 vs 0.19, reference 0.32) and a darker deck; at night its flash frames match the reference mean (0.22 vs 0.21). AgX stays available as `?tonemap=agx`. | Done |
 | Volumetric technique | **Decided for M1: half-res raymarch** (12 exponentially spaced steps, jittered, at half resolution with a quarter-resolution ladder rung). Lightning is the only local light in M1, and one point light through rain curtains does not justify a froxel grid's fixed cost (a 160x90x64 froxel inject and integrate every frame). Revisit when the lantern and lighthouse beam add local lights; profile both on the target machine then. | Revisit in milestone 4 |
 | Audio direction | Section 13 | Milestone 4 |
 | Loading time target | Under 10 s | Milestone 1 |

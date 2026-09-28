@@ -164,7 +164,7 @@ export class Rain {
     const energy = float(0.0016).div(width);
     // Drops are clear: they show the light around them at low contrast, so they stay faint over the sea.
     const alpha = visible.select(fade.mul(edge).mul(energy).mul(0.06), float(0));
-    material.colorNode = vec4(particleLight(lit, view, 3.5, 3), alpha);
+    material.colorNode = vec4(particleLight(lit, view, 1.2, 3), alpha);
     this.mesh = new THREE.Mesh(quad, material);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 2;

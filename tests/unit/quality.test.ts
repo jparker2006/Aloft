@@ -43,4 +43,11 @@ describe('quality ladder', () => {
     expect(tierFromBenchmark(11)).toBe('med');
     expect(tierFromBenchmark(40)).toBe('low');
   });
+
+  it('does not mistake a vsync-locked frame time for a slow GPU when there are no timestamps', () => {
+    expect(tierFromBenchmark(16.7, false)).toBe('high');
+    expect(tierFromBenchmark(8.3, false)).toBe('high');
+    expect(tierFromBenchmark(22, false)).toBe('med');
+    expect(tierFromBenchmark(33, false)).toBe('low');
+  });
 });

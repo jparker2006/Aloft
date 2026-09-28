@@ -94,7 +94,7 @@ export class Atmosphere {
     const lowRay = smoothstep(0.14, 0.0, dir.y.abs());
     const underDeck = mix(float(0.004), float(0.06), this.look.u.cloudGapStrength).mul(lowRay);
     const key = this.look.u.keyColor.mul(this.look.u.keyIntensity).mul(hg.mul(underDeck));
-    let color = this.look.u.fogColor.mul(this.look.u.ambient.mul(9).add(0.02)).add(key) as unknown as V3;
+    let color = this.look.u.fogColor.mul(this.look.u.ambient.mul(5).add(0.008)).add(key) as unknown as V3;
     if (this.lightning) {
       const toFlash = normalize(this.lightning.cloudPos.sub(this.cameraPos));
       const lobe = pow(saturate(dir.dot(toFlash)), 8)
@@ -143,7 +143,7 @@ export class Atmosphere {
         .mul(this.look.u.keyIntensity)
         .mul(mix(float(0.002), float(0.03), this.look.u.cloudGapStrength))
         .mul(smoothstep(0.2, 0.0, dir.y.abs()));
-      const ambient = this.look.u.fogColor.mul(this.look.u.ambient.mul(9).add(0.02));
+      const ambient = this.look.u.fogColor.mul(this.look.u.ambient.mul(5).add(0.008));
       Loop(VOLUME_STEPS, ({ i }: { i: THREE.Node<'int'> }) => {
         // Exponentially spaced samples: dense near the camera, sparse far away.
         const a = float(i).add(jitter).div(VOLUME_STEPS);

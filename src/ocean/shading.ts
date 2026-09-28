@@ -13,6 +13,7 @@ import {
   float,
   fwidth,
   max,
+  min,
   mix,
   mx_noise_float,
   normalize,
@@ -66,6 +67,9 @@ export function rainRippleNormal(n: V3, xz: V2, time: F, rain: F, distance: F): 
 }
 
 /** Returns a builder that emits the shading nodes inline (called once per material). */
+/** Upper bound on sun glint radiance (pre-exposure). */
+const GLINT_MAX = 24;
+
 export interface FlashLight {
   direction: V3;
   radiance: V3;
@@ -108,7 +112,12 @@ export function makeSeaShading(look: LookUniforms, weather: WeatherUniforms, sky
     const vDotH = max(dot(v, h), 0);
     const fh = float(0.02).add(float(0.98).mul(pow(float(1).sub(vDotH), 5)));
     const visibility = float(0.25).div(max(nDotL.mul(nDotV), 0.02));
-    const glint = keyRadiance.mul(ggxD(nDotH, alpha).mul(fh).mul(visibility).mul(nDotL));
+    // Clamped: one facet catching the sun disc at a tiny roughness would otherwise reach thousands and
+    // bloom into a ball. The clamp is far above anything the tone mapper can show.
+    const glint = min(
+      keyRadiance.mul(ggxD(nDotH, alpha).mul(fh).mul(visibility).mul(nDotL)),
+      vec3(GLINT_MAX),
+    );
 
     // Subsurface: strongest looking toward the light through the thin top of a raised crest. Water
     // lower on the face is metres thick and stays dark, so the crest curve is deliberately steep.

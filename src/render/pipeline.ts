@@ -6,7 +6,7 @@
 //   bloom                               soft glow on highlights and lightning
 //   exposure                            the look's exposure times auto exposure (flash-excluded)
 //   lens rain                           drops on the lens when the camera faces the wind
-//   tone map                            AgX (default) or ACES-fitted (?tonemap=aces), see SPEC section 19
+//   tone map                            ACES-fitted (default) or AgX (?tonemap=agx), see SPEC section 19
 //   grade                               lift, gamma, gain, split tone, saturation, contrast
 //   vignette, grain, dither, sRGB encode
 // SSR and GTAO are not in the milestone 1 graph: the sea reflects the sky and clouds analytically (and
@@ -36,6 +36,7 @@ import {
   screenCoordinate,
   screenUV,
   smoothstep,
+  uint,
   uniform,
   vec2,
   vec3,
@@ -57,6 +58,15 @@ import type { WeatherUniforms } from './weather';
 type F = THREE.Node<'float'>;
 type V2 = THREE.Node<'vec2'>;
 type V3 = THREE.Node<'vec3'>;
+
+/**
+ * Per-pixel hash in [0, 1), decorrelated per frame and per use. TSL's hash takes a scalar seed (given a
+ * vec2 it keeps only x, which draws vertical lines), so the pixel is flattened to one integer first.
+ */
+function pixelHash(frame: THREE.Node<'float'>, salt: number): F {
+  const pixel = uint(screenCoordinate.x).add(uint(screenCoordinate.y).mul(uint(8192)));
+  return hash(pixel.add(uint(frame).mul(uint(2654435761))).add(uint(salt * 97531))) as unknown as F;
+}
 
 export interface PipelineOptions {
   look: LookUniforms;
@@ -120,7 +130,7 @@ export class FramePipeline {
         const volumetric = rtt(
           Fn(() => {
             const r = viewRay(screenUV);
-            const jitter = fract(hash(screenCoordinate.xy).add(this.frameIndex.mul(0.618034)));
+            const jitter = fract(pixelHash(float(0), 1).add(this.frameIndex.mul(0.618034)));
             return atmosphere.volumetric(
               this.camPos,
               r.dir,
@@ -182,10 +192,12 @@ export class FramePipeline {
       lensed = mix(exposed, refracted.mul(0.9), drop.mul(0.85)) as V3;
     }
 
-    const useAces = new URLSearchParams(location.search).get('tonemap') === 'aces';
-    const mapped = (useAces
-      ? acesFilmicToneMapping(lensed, float(1))
-      : agxToneMapping(lensed, float(1))) as unknown as V3;
+    // ACES-fitted won the capture comparison (critique 0013): deeper blacks, more saturated gap light and
+    // a darker deck, all closer to the references than AgX's flatter, milkier rendering.
+    const useAgx = new URLSearchParams(location.search).get('tonemap') === 'agx';
+    const mapped = (useAgx
+      ? agxToneMapping(lensed, float(1))
+      : acesFilmicToneMapping(lensed, float(1))) as unknown as V3;
 
     // Grade in display-linear space.
     const lifted = mapped.add(look.u.lift.mul(float(1).sub(mapped))).mul(look.u.gain);
@@ -199,7 +211,7 @@ export class FramePipeline {
     // Vignette, grain and dither.
     const centered = screenUV.sub(0.5).mul(vec2(1.25, 1));
     const vignette = float(1).sub(look.u.vignette.mul(pow(centered.length().mul(1.3), 2.4)));
-    const noise = hash(screenCoordinate.xy.add(this.frameIndex.mul(vec2(37.1, 91.7))));
+    const noise = pixelHash(this.frameIndex, 2);
     const grain = noise
       .sub(0.5)
       .mul(look.u.grain)
@@ -208,7 +220,7 @@ export class FramePipeline {
     const encoded = sRGBTransferOETF(
       (p.has('nograde') ? clamp(mapped, 0, 1) : graded) as V3,
     ) as unknown as V3;
-    const dither = hash(screenCoordinate.xy.mul(1.37).add(this.frameIndex)).sub(0.5).div(255);
+    const dither = pixelHash(this.frameIndex, 3).sub(0.5).div(255);
 
     this.pipeline = new THREE.RenderPipeline(app.renderer);
     this.pipeline.outputColorTransform = false;

@@ -163,7 +163,7 @@ export const PRESETS: Readonly<Record<PresetName, Partial<Look>>> = {
     cloudShadow: [0.0015, 0.0018, 0.0025],
     fogColor: srgbHex(0x0c1016),
     fogDensity: 0.00024,
-    exposure: 1.6,
+    exposure: 2.0,
     subsurface: 0.6,
     saturation: 0.94,
     contrast: 1.05,
