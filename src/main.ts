@@ -48,7 +48,7 @@ async function boot(): Promise<void> {
   });
 
   if (params.shot) {
-    await runShot(app, { shot: stage.shotHooks, prewarm: stage.prewarmHooks });
+    await runShot(app, { shot: stage.shotHooks, prewarm: stage.prewarmHooks, settle: stage.settleHooks });
   } else {
     const freeCamera = app.addSystem(new FreeCamera(app, stage));
     freeCamera.jumpTo(0);
@@ -56,10 +56,13 @@ async function boot(): Promise<void> {
     await app.renderer.compileAsync(app.scene, app.camera);
     app.frame(0);
     hideLoading();
+    // No flash may reach the screen before the first-run photosensitivity notice has been answered.
+    stage.lightning.suppressed = true;
     app.start();
     await showPhotosensitivityNotice(settings, (reduce) => {
       stage.lightning.reduced = reduce;
     });
+    stage.lightning.suppressed = false;
   }
 }
 

@@ -50,7 +50,7 @@ export const BOOKMARKS: Readonly<Record<string, Bookmark>> = {
     camera: { position: [0, 6, 0], bearing: 200, pitch: 3 },
     weather: 'gale',
     time: 40,
-    strike: { bearing: 200, distance: 4000 },
+    strike: { bearing: 200, distance: 2400 },
   },
   storm_sky: {
     name: 'storm_sky',

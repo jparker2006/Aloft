@@ -81,6 +81,10 @@ const TOP_KEY = 0.004;
 const UNDERLIGHT = 0.2;
 /** Optical depth of the deck between a sample and the gap, per unit of blocking coverage (two probes). */
 const FAR_OCCLUSION = 10;
+/** Lightning inside the deck: radiance scale and the radius of its bright core, metres. */
+const FLASH_POWER = 1.6;
+const FLASH_CORE = 450;
+const FLASH_REACH = 1800;
 
 const toF = (x: number | F): F => (typeof x === 'number' ? (float(x) as F) : x);
 
@@ -117,6 +121,7 @@ export class StormClouds {
   private readonly blend = uniform(1);
   private readonly accumulated = { frames: 0 };
   private lastViewProj = new THREE.Matrix4();
+  private lastFlash = 0;
 
   private raw: THREE.RenderTarget;
   private history: [THREE.RenderTarget, THREE.RenderTarget];
@@ -366,14 +371,39 @@ export class StormClouds {
     return key.add(diffuse).add(below).add(this.flashLight(p)) as V3;
   }
 
-  /** Light from a lightning strike inside the deck: a point source seen through scattering cloud. */
-  private flashLight(p: V3): V3 {
-    if (!this.lightning) return vec3(0, 0, 0) as V3;
+  /** Unoccluded flash radiance at a point: a point source inside the deck with a soft core. */
+  private flashFalloff(p: V3): F {
+    if (!this.lightning) return float(0) as F;
     const d = p.sub(this.lightning.cloudPos).length();
-    const falloff = float(1)
-      .div(float(1).add(d.div(900).pow(2)))
-      .mul(exp(d.div(-5000)));
-    return this.lightning.color.mul(this.lightning.flash.mul(falloff).mul(28)) as V3;
+    // Inverse square around a soft core, and extinction through kilometres of deck beyond it.
+    return float(1)
+      .div(float(1).add(d.div(FLASH_CORE).pow(2)))
+      .mul(exp(d.div(-FLASH_REACH))) as F;
+  }
+
+  /**
+   * Light from a lightning strike inside the deck, diffused through the cloud between the sample and the
+   * channel (two density probes, two-stream transmittance). Evaluated only while a flash is live.
+   */
+  private flashLight(p: V3): V3 {
+    const lightning = this.lightning;
+    if (!lightning) return vec3(0, 0, 0) as V3;
+    const out = vec3(0, 0, 0).toVar();
+    If(lightning.flash.greaterThan(0.0005), () => {
+      const toStrike = lightning.cloudPos.sub(p);
+      const d = toStrike.length();
+      const dir = toStrike.div(max(d, 1));
+      const near = min(d.mul(0.25), 400);
+      const far = min(d.mul(0.6), 1600);
+      const od = this.deckDensity(p.add(dir.mul(near)), false)
+        .mul(near.mul(2))
+        .add(this.deckDensity(p.add(dir.mul(far)), false).mul(far.sub(near).mul(1.5)));
+      const transmittance = float(1).div(float(1).add(od.mul(0.18)));
+      out.assign(
+        lightning.color.mul(lightning.flash.mul(this.flashFalloff(p)).mul(transmittance).mul(FLASH_POWER)),
+      );
+    });
+    return out as unknown as V3;
   }
 
   private buildMarch(): V4 {
@@ -476,7 +506,11 @@ export class StormClouds {
       const cover = float(1).sub(exp(od.negate())).mul(aerial);
       const u = this.look.u;
       const diffuse = this.topLight().div(float(1).add(od.mul(2).mul(DIFFUSION_K)));
-      const cloudColor = u.cloudShadow.add(diffuse).add(this.underLight(p, float(0.6) as F));
+      let cloudColor = u.cloudShadow.add(diffuse).add(this.underLight(p, float(0.6) as F)) as V3;
+      if (this.lightning) {
+        const flash = this.lightning.color.mul(this.lightning.flash.mul(this.flashFalloff(p)).mul(FLASH_POWER * 0.35));
+        cloudColor = cloudColor.add(flash) as V3;
+      }
       return mix(sky(dir), cloudColor, cover) as V3;
     };
   }
@@ -492,7 +526,11 @@ export class StormClouds {
     this.cameraPos.value.copy(camera.position);
 
     const still = vp.equals(this.lastViewProj) && frame.realDt === 0;
-    if (!still) this.accumulated.frames = 0;
+    // A still frame whose lighting changed (a shot's flash coming on) starts accumulating afresh; in play
+    // the 0.2 history blend already follows the flash within a few frames.
+    const flash = this.lightning?.flash.value ?? 0;
+    if (!still || (still && Math.abs(flash - this.lastFlash) > 1e-4)) this.accumulated.frames = 0;
+    this.lastFlash = flash;
     if (this.accumulated.frames >= this.maxAccumulatedFrames) return;
 
     this.prevViewProj.value.copy(this.accumulated.frames === 0 ? vp : this.lastViewProj);

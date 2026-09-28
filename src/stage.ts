@@ -1,10 +1,10 @@
 // Scene composition for the hero still (milestone 1): look, weather, ocean, clouds, lightning, and later
 // particles and atmosphere. Returns the shot and prewarm hooks the shot runner calls.
-// A/B flags: ?nolightning ?nofoam ?noclouds
+// A/B flags: ?nolightning ?nofoam ?noclouds. ?reduceflash forces the "Reduce flashing" setting on.
 import * as THREE from 'three/webgpu';
 import { cameraPosition, dot, max, normalize, pow } from 'three/tsl';
 import type { App } from './app/app';
-import type { PrewarmHook, ShotHook } from './app/shot';
+import type { PrewarmHook, SettleHook, ShotHook } from './app/shot';
 import { LookBlender, LookUniforms, resolvePreset } from './render/look';
 import { WEATHER, WeatherController } from './render/weather';
 import { Ocean } from './ocean/ocean';
@@ -33,6 +33,7 @@ export interface Stage {
   weather: WeatherController;
   shotHooks: ShotHook[];
   prewarmHooks: PrewarmHook[];
+  settleHooks: SettleHook[];
 }
 
 export function buildStage(app: App): Stage {
@@ -50,7 +51,7 @@ export function buildStage(app: App): Stage {
   // Lightning: scheduled from the weather, evaluated at simulation time.
   const lightningEnabled = !app.params.has('nolightning');
   const lightning = new LightningSystem(app.rng.stream('lightning'), () => app.camera.position);
-  lightning.reduced = app.settings.reduceFlashing;
+  lightning.reduced = app.settings.reduceFlashing || app.params.has('reduceflash');
   const bolt = new BoltMesh(lightning.uniforms);
   lightning.onStrike((strike) => bolt.rebuild(strike));
   if (lightningEnabled) {
@@ -71,13 +72,13 @@ export function buildStage(app: App): Stage {
   const lightningUniforms = lightningEnabled ? lightning.uniforms : null;
 
   const baseSky = makeSkyRadiance(look);
-  // The flash lights the sky around the strike and, faintly, everywhere.
+  // The flash lights the sky seen under the deck around the strike and, very faintly, everywhere.
   const sky = (dir: V3): V3 => {
     if (!lightningUniforms) return baseSky(dir);
     const toStrike = normalize(lightningUniforms.cloudPos.sub(cameraPosition));
-    const glow = pow(max(dot(normalize(dir), toStrike), 0), 5)
-      .mul(0.9)
-      .add(0.04);
+    const glow = pow(max(dot(normalize(dir), toStrike), 0), 24)
+      .mul(0.16)
+      .add(0.003);
     return baseSky(dir).add(lightningUniforms.color.mul(lightningUniforms.flash.mul(glow))) as V3;
   };
   const clouds = app.addSystem(
@@ -156,9 +157,15 @@ export function buildStage(app: App): Stage {
     (shot) => {
       if (!lightningEnabled) return;
       // A bookmark's own strike, or for mid-flash frames a strike just off the camera's bearing.
-      const request = shot.bookmark.strike ?? { bearing: shot.bookmark.camera.bearing + 18, distance: 5200 };
+      const request = shot.bookmark.strike ?? { bearing: shot.bookmark.camera.bearing + 18, distance: 3000 };
       if (shot.flash !== null) lightning.force(app.clock.simTime, request, shot.flash);
       else lightning.clear();
+    },
+  ];
+  // A flash frame holds auto exposure, so exposure first settles on the unlit scene, as it would in play.
+  const settleHooks: SettleHook[] = [
+    (frame, frames) => {
+      lightning.suppressed = frame < frames / 2;
     },
   ];
   const prewarmHooks: PrewarmHook[] = [
@@ -181,5 +188,6 @@ export function buildStage(app: App): Stage {
     weather,
     shotHooks,
     prewarmHooks,
+    settleHooks,
   };
 }

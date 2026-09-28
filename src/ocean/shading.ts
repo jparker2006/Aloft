@@ -79,7 +79,7 @@ export function flashLightAt(lightning: LightningUniforms | null, worldPos: V3):
   const falloff = float(1).div(float(1).add(d.div(5000).pow(2)));
   return {
     direction: toFlash.div(d) as V3,
-    radiance: lightning.color.mul(lightning.flash.mul(falloff).mul(2.2)) as unknown as V3,
+    radiance: lightning.color.mul(lightning.flash.mul(falloff).mul(0.12)) as unknown as V3,
   };
 }
 
@@ -128,12 +128,12 @@ export function makeSeaShading(look: LookUniforms, weather: WeatherUniforms, sky
       const hf = normalize(flash.direction.add(v));
       const nDotLf = max(dot(n, flash.direction), 0);
       const flashGlint = flash.radiance.mul(
-        ggxD(max(dot(n, hf), 0), alpha.add(0.08))
+        ggxD(max(dot(n, hf), 0), alpha.add(0.03))
           .mul(fresnel.max(0.02))
           .mul(float(0.25).div(max(nDotLf.mul(nDotV), 0.02)))
           .mul(nDotLf),
       );
-      const flashBody = look.u.waterScatter.mul(flash.radiance).mul(crest.mul(0.8).add(0.08));
+      const flashBody = look.u.waterScatter.mul(flash.radiance).mul(crest.mul(0.6).add(0.03));
       color = color.add(flashGlint).add(flashBody.mul(float(1).sub(fresnel))) as unknown as V3;
     }
     return color;

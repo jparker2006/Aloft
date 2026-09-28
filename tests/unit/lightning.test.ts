@@ -54,6 +54,19 @@ describe('lightning flash limiter', () => {
     expect(countOnsets(bolt, 0.5)).toHaveLength(1);
   });
 
+  it('keeps every flash dark while suppressed (before the photosensitivity notice is answered)', () => {
+    const system = new LightningSystem(new Rng(4), () => new THREE.Vector3());
+    system.rate = 400;
+    system.suppressed = true;
+    let peak = 0;
+    for (let i = 0; i < 10 * HZ; i++) {
+      system.step(1 / HZ, i / HZ);
+      system.update(i / HZ);
+      peak = Math.max(peak, system.uniforms.flash.value, system.uniforms.bolt.value);
+    }
+    expect(peak).toBe(0);
+  });
+
   it('is deterministic for a seed', () => {
     expect(simulate(10, false, 20, 4)).toEqual(simulate(10, false, 20, 4));
   });

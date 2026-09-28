@@ -20,6 +20,8 @@ export interface ShotRequest {
 export type ShotHook = (shot: ShotRequest) => void | Promise<void>;
 /** Systems that need simulated history before the first frame (foam, clouds) register here. */
 export type PrewarmHook = (seconds: number) => void | Promise<void>;
+/** Called before each settle frame (for example, to hold a flash back until exposure has settled). */
+export type SettleHook = (frame: number, frames: number) => void;
 
 export const SHOT_SETTLE_FRAMES = 24;
 export const SHOT_PREWARM_SECONDS = 12;
@@ -42,7 +44,10 @@ export function applyBookmarkCamera(app: App, bookmark: Bookmark): void {
   app.camera.updateProjectionMatrix();
 }
 
-export async function runShot(app: App, hooks: { shot: ShotHook[]; prewarm: PrewarmHook[] }): Promise<void> {
+export async function runShot(
+  app: App,
+  hooks: { shot: ShotHook[]; prewarm: PrewarmHook[]; settle?: SettleHook[] },
+): Promise<void> {
   const started = performance.now();
   try {
     const name = app.params.shot ?? '';
@@ -60,6 +65,7 @@ export async function runShot(app: App, hooks: { shot: ShotHook[]; prewarm: Prew
     for (const h of hooks.prewarm) await h(SHOT_PREWARM_SECONDS);
 
     for (let i = 0; i < SHOT_SETTLE_FRAMES; i++) {
+      for (const h of hooks.settle ?? []) h(i, SHOT_SETTLE_FRAMES);
       app.frame(0);
       await new Promise((r) => requestAnimationFrame(r));
     }

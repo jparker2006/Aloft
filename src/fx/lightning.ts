@@ -111,6 +111,8 @@ export class LightningSystem {
   minDistance = 3000;
   maxDistance = 12000;
   cloudBase = 500;
+  /** Shot mode: keeps the flash dark while exposure settles on the unlit scene. */
+  suppressed = false;
   /** Shot mode: time is frozen at this offset into the forced strike. */
   private frozen: { strike: Strike; offset: number } | null = null;
   private active: Strike | null = null;
@@ -176,6 +178,11 @@ export class LightningSystem {
   update(time: number): void {
     const strike = this.frozen?.strike ?? this.active;
     if (!strike) return;
+    if (this.suppressed) {
+      this.uniforms.flash.value = 0;
+      this.uniforms.bolt.value = 0;
+      return;
+    }
     const t = this.frozen ? this.frozen.offset : time - strike.start;
     this.uniforms.flash.value = strikeEnvelope(strike, t, this.reduced);
     this.uniforms.bolt.value = boltIntensity(strike, t, this.reduced);
