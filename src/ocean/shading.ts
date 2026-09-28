@@ -68,7 +68,7 @@ export function rainRippleNormal(n: V3, xz: V2, time: F, rain: F, distance: F): 
 
 /** Returns a builder that emits the shading nodes inline (called once per material). */
 /** Upper bound on sun glint radiance (pre-exposure). */
-const GLINT_MAX = 24;
+const GLINT_MAX = 8;
 
 export interface FlashLight {
   direction: V3;

@@ -284,7 +284,7 @@ export class Spindrift {
       .mul(float(1).sub(smoothstep(0.45, 1, t)))
       .mul(nearFade)
       .mul(0.07);
-    material.colorNode = vec4(particleLight(lit, view, 3, 3), alive.select(alpha, float(0)));
+    material.colorNode = vec4(particleLight(lit, view, 1.2, 4), alive.select(alpha, float(0)));
     this.mesh = new THREE.Mesh(quad, material);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 1;
