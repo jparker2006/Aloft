@@ -75,10 +75,13 @@ export class FoamAccumulator {
     this.current = 1 - this.current;
   }
 
-  /** Configures thresholds from the wind: stronger wind breaks more crests and keeps foam longer. */
+  /**
+   * Configures thresholds from the wind: stronger wind breaks more crests and keeps foam longer. At a
+   * gale (about 25 m/s) roughly a third of the sea should be whitewater or streaks, as in the references.
+   */
   setWind(windSpeed: number): void {
     const t = Math.min(Math.max((windSpeed - 12) / 20, 0), 1);
-    this.threshold.value = 0.62 + 0.3 * t;
-    this.halfLife.value = 2.5 + 3 * t;
+    this.threshold.value = 0.64 + 0.3 * t;
+    this.halfLife.value = 3 + 4.5 * t;
   }
 }

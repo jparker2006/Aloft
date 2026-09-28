@@ -158,7 +158,8 @@ export class FramePipeline {
         .rgb as unknown as V3;
     }
     if (!p.has('nobloom')) {
-      const glow = bloom(vec4(image, 1), 1, 0.55, 0.85);
+      // Threshold above the clamped sea glint, so glitter sparkles instead of blooming into discs.
+      const glow = bloom(vec4(image, 1), 1, 0.55, 1.4);
       image = image.add(glow.rgb.mul(look.u.bloomStrength.mul(4))) as V3;
     }
 

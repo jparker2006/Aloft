@@ -195,7 +195,7 @@ export function makeFoamCoverage(foamTexture: THREE.Texture, weather: WeatherUni
     const f = inputs.amount.x;
     const fresh = inputs.amount.y;
     // Aged foam is patchy: the breakup field opens wide gaps in it; fresh whitewater stays solid.
-    const agedPatches = smoothstep(0.3, 0.75, breakup).mul(1.1).add(0.15);
+    const agedPatches = smoothstep(0.2, 0.7, breakup).mul(0.9).add(0.32);
     const amount = f.mul(1.35).mul(agedPatches).add(fresh.mul(1.0));
     const threshold = float(1).sub(amount);
     const dissolved = smoothstep(threshold, threshold.add(softness), fieldSafe);
@@ -205,8 +205,10 @@ export function makeFoamCoverage(foamTexture: THREE.Texture, weather: WeatherUni
       .mul(breakup)
       .mul(0.16);
     // Aged foam is a thin film the water shows through; only fresh whitewater is opaque.
-    const opacity = mix(float(0.45), float(1), saturate(fresh.mul(2)));
-    const coverage = max(dissolved.mul(bubblesSafe.mul(0.15).add(0.9)).mul(opacity), streaky);
+    const opacity = mix(float(0.6), float(1), saturate(fresh.mul(2)));
+    // Dense whitewater is never a flat sheet: the lace field keeps shading its interior.
+    const interior = smoothstep(0.1, 0.6, fieldSafe).mul(0.3).add(0.7);
+    const coverage = max(dissolved.mul(bubblesSafe.mul(0.15).add(0.9)).mul(opacity).mul(interior), streaky);
     return saturate(coverage) as unknown as F;
   };
 }
@@ -220,7 +222,8 @@ export function foamRadiance(look: LookUniforms, normal: V3, view: V3, flash: Fl
   const diffuse = saturate(dot(normal, L));
   const backlight = pow(saturate(dot(view.negate(), L)), 6).mul(0.06);
   const albedo = float(0.82).mul(look.u.foamBrightness);
-  let light = look.u.ambient.mul(2.4).add(keyRadiance.mul(diffuse.mul(0.9).add(backlight))) as unknown as V3;
+  // Foam scatters the whole overcast dome back up, so even in shade it stays well above the water.
+  let light = look.u.ambient.mul(3.5).add(keyRadiance.mul(diffuse.mul(0.9).add(backlight))) as unknown as V3;
   if (flash)
     light = light.add(flash.radiance.mul(saturate(dot(normal, flash.direction)).mul(0.5).add(0.2))) as V3;
   return light.mul(albedo) as unknown as V3;
