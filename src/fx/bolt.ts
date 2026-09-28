@@ -15,6 +15,7 @@ import {
 } from 'three/tsl';
 import { Rng } from '../app/rng';
 import type { LightningUniforms, Strike } from './lightning';
+import { shaderPosition } from '../render/velocity';
 
 type V3 = THREE.Node<'vec3'>;
 
@@ -103,7 +104,7 @@ export class BoltMesh {
     // Keep bolts at least ~2 px wide however far away they are.
     const distance = cameraPosition.sub(center).length();
     const w = width.max(distance.mul(0.0012)).mul(this.scale);
-    material.positionNode = center.add(sideways.mul(side.mul(w)));
+    material.positionNode = shaderPosition(center.add(sideways.mul(side.mul(w))) as unknown as V3);
     const core = float(1).sub(smoothstep(0.3, 1, side.abs()));
     material.colorNode = vec4(vec3(lightning.color).mul(lightning.bolt).mul(brightness).mul(core).mul(60), 1);
     this.mesh = new THREE.Mesh(this.geometry, material);

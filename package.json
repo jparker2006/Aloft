@@ -19,7 +19,8 @@
     "capture": "node tools/capture/capture.mjs",
     "test:gpu": "node tools/capture/gpu-tests.mjs",
     "baseline": "node tools/capture/baseline.mjs",
-    "capture:snapshot": "bash tools/capture/snapshot.sh"
+    "capture:snapshot": "bash tools/capture/snapshot.sh",
+    "play": "node tools/capture/play.mjs captures/play"
   },
   "dependencies": {
     "three": "0.186.1"

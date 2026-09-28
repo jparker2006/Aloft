@@ -7,6 +7,7 @@ import type { WeatherUniforms } from '../render/weather';
 import type { Ocean } from './ocean';
 import type { LightningUniforms } from '../fx/lightning';
 import { flashLightAt, foamRadiance, makeFoamCoverage, makeSeaShading } from './shading';
+import { shaderPosition } from '../render/velocity';
 
 type V3 = THREE.Node<'vec3'>;
 
@@ -32,7 +33,7 @@ export function createOceanMaterial(
   const baseXZ = basePosition.xz;
   const vertexDistance = baseXZ.sub(cameraPosition.xz).length();
   const displaced = basePosition.add(ocean.displacement(baseXZ, vertexDistance));
-  material.positionNode = displaced;
+  material.positionNode = shaderPosition(displaced as V3);
 
   const gridXZ = varying(baseXZ, 'vGridXZ');
   const worldPos = varying(displaced, 'vWorldPos');

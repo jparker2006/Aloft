@@ -36,6 +36,7 @@ import type { LightningUniforms } from './lightning';
 import type { LookUniforms } from '../render/look';
 import type { WeatherUniforms } from '../render/weather';
 import type { Ocean } from '../ocean/ocean';
+import { shaderPosition } from '../render/velocity';
 
 type F = THREE.Node<'float'>;
 type V3 = THREE.Node<'vec3'>;
@@ -152,9 +153,9 @@ export class Rain {
     const minWidth = distance.mul(0.0008);
     const width = max(float(0.0016), minWidth);
     const corner = attribute<'vec2'>('corner', 'vec2');
-    material.positionNode = center
-      .add(side.mul(corner.x.mul(width)))
-      .add(dir.mul(corner.y.sub(0.5).mul(length)));
+    material.positionNode = shaderPosition(
+      center.add(side.mul(corner.x.mul(width))).add(dir.mul(corner.y.sub(0.5).mul(length))) as unknown as V3,
+    );
     const visible = hash(instanceIndex.add(count * 5)).lessThan(w.rainRate);
     // Drops closer than a few metres would smear across the lens as bars; lens rain covers that range.
     const fade = smoothstep(2.5, 6, distance).mul(
@@ -272,9 +273,11 @@ export class Spindrift {
     const width = float(0.06).add(t.mul(0.3));
     const length = width.mul(4).add(velocity.length().mul(0.05));
     const corner = attribute<'vec2'>('corner', 'vec2');
-    material.positionNode = alive.select(
-      center.add(side.mul(corner.x.mul(width))).add(dir.mul(corner.y.mul(length))),
-      vec3(0, -1e6, 0),
+    material.positionNode = shaderPosition(
+      alive.select(
+        center.add(side.mul(corner.x.mul(width))).add(dir.mul(corner.y.mul(length))),
+        vec3(0, -1e6, 0),
+      ) as unknown as V3,
     );
     const falloff = exp(corner.x.mul(corner.x).mul(-3).sub(corner.y.mul(corner.y).mul(2.5)));
     // Wisps closer than a few metres would fill the lens; far ones are sub-pixel and just add shimmer.
