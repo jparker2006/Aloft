@@ -140,8 +140,13 @@ export const PRESETS: Readonly<Record<PresetName, Partial<Look>>> = {
     cloudLight: [1, 0.62, 0.36],
     cloudShadow: [0.016, 0.017, 0.02],
     fogColor: srgbHex(0x6b5a50),
-    splitShadows: [0, 0.01, 0.015],
-    splitHighlights: [0.02, 0.01, 0],
+    // Grade targets measured from the dusk references: teal-blue shadows (about 16, 26, 32 sRGB),
+    // neutral midtones near 70, orange highlights (red/blue about 1.8).
+    exposure: 0.8,
+    saturation: 1.18,
+    contrast: 1.1,
+    splitShadows: [0, 0.014, 0.022],
+    splitHighlights: [0.035, 0.008, -0.03],
   },
   night: {
     keyBearing: 150,
@@ -160,6 +165,8 @@ export const PRESETS: Readonly<Record<PresetName, Partial<Look>>> = {
     fogDensity: 0.00024,
     exposure: 1.6,
     subsurface: 0.6,
+    saturation: 0.94,
+    contrast: 1.05,
     splitShadows: [0, 0.004, 0.012],
   },
 };

@@ -107,7 +107,7 @@ export function buildStage(app: App): Stage {
   const rain = app.params.has('norain') ? null : new Rain(TIERS.high.rain, lit, ocean);
   const spindrift = app.params.has('nospray') ? null : new Spindrift(TIERS.high.spindrift, lit, ocean);
   if (rain) app.scene.add(rain.mesh);
-  if (spindrift) app.scene.add(spindrift.sprite);
+  if (spindrift) app.scene.add(spindrift.mesh);
   app.addSystem({
     name: 'particles',
     update: (frame) => {
@@ -128,7 +128,7 @@ export function buildStage(app: App): Stage {
     clouds.scudSteps.value = level.cloudScudSteps;
     if (rain)
       (rain.mesh.geometry as THREE.InstancedBufferGeometry).instanceCount = Math.min(level.rain, rain.count);
-    if (spindrift) spindrift.sprite.count = Math.min(level.spindrift, spindrift.count);
+    spindrift?.setDrawCount(level.spindrift);
     pipeline.setVolumetricScale(level.volumetricScale);
     ocean.fineCascadeEveryOtherFrame = level.fineCascadeEveryOtherFrame;
     if (app.renderer.getPixelRatio() !== level.renderScale) {

@@ -34,6 +34,8 @@ interface FloatArray {
 const METER_W = 64;
 const METER_H = 32;
 const THREADS = 256;
+/** Target scene key (mean luminance) the partial correction pulls toward: below middle grey, a storm is dark. */
+const EXPOSURE_KEY = 0.09;
 
 export class AutoExposure {
   /** exposure[0]: current exposure in EV relative to the look's exposure. */
@@ -85,7 +87,7 @@ export class AutoExposure {
         const meanLog = total.div(METER_W * METER_H);
         // Partial correction toward middle grey: dark scenes stay darker than grey, bright ones brighter.
         // The lift is capped low so a night storm stays a night storm; the look's exposure sets its base.
-        const target = clamp(log2(float(0.13)).sub(meanLog).mul(0.55), -2.5, 1.2);
+        const target = clamp(log2(float(EXPOSURE_KEY)).sub(meanLog).mul(0.55), -2.5, 1.2);
         const current = exposure.element(0);
         const rate = float(1).sub(exp(this.dt.mul(-1.4)));
         const next = mix(current, target, max(rate, this.snap));

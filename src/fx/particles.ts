@@ -28,7 +28,6 @@ import {
   smoothstep,
   uint,
   uniform,
-  uv,
   vec2,
   vec3,
   vec4,
@@ -164,7 +163,7 @@ export class Rain {
     const edge = float(1).sub(corner.x.abs());
     const energy = float(0.0016).div(width);
     // Drops are clear: they show the light around them at low contrast, so they stay faint over the sea.
-    const alpha = visible.select(fade.mul(edge).mul(energy).mul(0.09), float(0));
+    const alpha = visible.select(fade.mul(edge).mul(energy).mul(0.06), float(0));
     material.colorNode = vec4(particleLight(lit, view, 3.5, 3), alpha);
     this.mesh = new THREE.Mesh(quad, material);
     this.mesh.frustumCulled = false;
@@ -184,7 +183,8 @@ export class Rain {
 }
 
 export class Spindrift {
-  readonly sprite: THREE.Sprite;
+  readonly mesh: THREE.Mesh;
+  private readonly geometry: THREE.InstancedBufferGeometry;
   private readonly state: ArrayView;
   private readonly motion: ArrayView;
   private readonly dt = uniform(0);
@@ -245,28 +245,54 @@ export class Spindrift {
       m.assign(vec4(v, life));
     })().compute(count, [64]);
 
-    const material = new THREE.SpriteNodeMaterial();
+    // Wind-torn wisps: soft quads stretched along each particle's motion and turned toward the camera,
+    // growing and thinning as they age. Round sprites read as snowballs; streaks read as spray.
+    const quad = new THREE.InstancedBufferGeometry();
+    quad.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 3));
+    quad.setAttribute('corner', new THREE.Float32BufferAttribute([-1, -1, 1, -1, -1, 1, 1, 1], 2));
+    quad.setIndex([0, 1, 2, 1, 3, 2]);
+    quad.instanceCount = count;
+    this.geometry = quad;
+
+    const material = new THREE.MeshBasicNodeMaterial();
     material.transparent = true;
     material.depthWrite = false;
     const s = this.state.element(instanceIndex);
     const m = this.motion.element(instanceIndex);
     const t = saturate(s.w.div(m.w.max(0.01)));
     const alive = s.w.lessThan(m.w);
-    material.positionNode = s.xyz;
-    material.scaleNode = alive.select(float(0.25).add(t.mul(1.6)), float(0));
-    const toCamera = cameraPosition.sub(s.xyz);
-    const view = normalize(toCamera) as V3;
-    const r = uv().sub(0.5).length().mul(2);
-    const puff = float(1).sub(smoothstep(0.2, 1, r));
-    const alpha = puff
-      .mul(smoothstep(0, 0.15, t))
-      .mul(float(1).sub(smoothstep(0.55, 1, t)))
-      .mul(0.3);
-    material.colorNode = vec4(particleLight(lit, view, 5, 4), alive.select(alpha, float(0)));
-    this.sprite = new THREE.Sprite(material);
-    this.sprite.count = count;
-    this.sprite.frustumCulled = false;
-    this.sprite.renderOrder = 1;
+    const center = s.xyz as unknown as V3;
+    const velocity = m.xyz as unknown as V3;
+    const dir = normalize(velocity.add(vec3(0, 0.001, 0)));
+    const toCamera = cameraPosition.sub(center);
+    const distance = toCamera.length();
+    const view = toCamera.div(distance) as V3;
+    const side = normalize(cross(dir, view));
+    // Fine: spray is mist and fibres, and dozens of faint wisps read better than a few bright ones.
+    const width = float(0.06).add(t.mul(0.3));
+    const length = width.mul(4).add(velocity.length().mul(0.05));
+    const corner = attribute<'vec2'>('corner', 'vec2');
+    material.positionNode = alive.select(
+      center.add(side.mul(corner.x.mul(width))).add(dir.mul(corner.y.mul(length))),
+      vec3(0, -1e6, 0),
+    );
+    const falloff = exp(corner.x.mul(corner.x).mul(-3).sub(corner.y.mul(corner.y).mul(2.5)));
+    // Wisps closer than a few metres would fill the lens; far ones are sub-pixel and just add shimmer.
+    const nearFade = smoothstep(3, 9, distance);
+    const alpha = falloff
+      .mul(smoothstep(0, 0.12, t))
+      .mul(float(1).sub(smoothstep(0.45, 1, t)))
+      .mul(nearFade)
+      .mul(0.07);
+    material.colorNode = vec4(particleLight(lit, view, 3, 3), alive.select(alpha, float(0)));
+    this.mesh = new THREE.Mesh(quad, material);
+    this.mesh.frustumCulled = false;
+    this.mesh.renderOrder = 1;
+  }
+
+  /** Draws at most `n` particles (quality ladder). */
+  setDrawCount(n: number): void {
+    this.geometry.instanceCount = Math.min(n, this.count);
   }
 
   step(renderer: THREE.WebGPURenderer, camera: THREE.Camera, dt: number, frame: number): void {

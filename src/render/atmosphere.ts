@@ -43,7 +43,7 @@ export const FOG_MAX_DISTANCE = 30000;
 const VOLUME_STEPS = 12;
 const VOLUME_MAX_DISTANCE = 12000;
 /** Extinction of a rain curtain relative to the ambient haze. */
-const CURTAIN_DENSITY = 4;
+const CURTAIN_DENSITY = 7;
 
 export class Atmosphere {
   /** Extinction at sea level per metre, set from the weather each frame. */
@@ -62,7 +62,7 @@ export class Atmosphere {
     const rain = this.weather.rainRate.value;
     // Koschmieder, then extra extinction from rain; the look's fog density scales the whole thing.
     this.density.value =
-      (3.912 / visibility) * (1 + rain * 0.6) * (this.look.u.fogDensity.value / 0.00018) * 0.55;
+      (3.912 / visibility) * (1 + rain * 0.6) * (this.look.u.fogDensity.value / 0.00018) * 0.35;
   }
 
   /** Optical depth from the camera along a ray of length `distance` in direction `dir`. */
@@ -87,17 +87,19 @@ export class Atmosphere {
     const L = this.look.keyDirection;
     const cosTheta = dir.dot(L);
     // Forward-scattering lobe toward the key light (the glow around a low sun through haze). Under the
-    // deck the key only reaches the haze through the gap, so the lobe is scaled by the gap's strength.
+    // deck the key only reaches haze that lies under the gap: far away and low on the horizon, so the
+    // lobe is confined to low rays and scaled by the gap's strength.
     const g = 0.8;
     const hg = float((1 - g * g) / (4 * Math.PI)).div(pow(float(1 + g * g).sub(cosTheta.mul(2 * g)), 1.5));
-    const underDeck = mix(float(0.02), float(0.18), this.look.u.cloudGapStrength);
+    const lowRay = smoothstep(0.14, 0.0, dir.y.abs());
+    const underDeck = mix(float(0.004), float(0.06), this.look.u.cloudGapStrength).mul(lowRay);
     const key = this.look.u.keyColor.mul(this.look.u.keyIntensity).mul(hg.mul(underDeck));
     let color = this.look.u.fogColor.mul(this.look.u.ambient.mul(9).add(0.02)).add(key) as unknown as V3;
     if (this.lightning) {
       const toFlash = normalize(this.lightning.cloudPos.sub(this.cameraPos));
-      const lobe = pow(saturate(dir.dot(toFlash)), 6)
-        .mul(0.25)
-        .add(0.02);
+      const lobe = pow(saturate(dir.dot(toFlash)), 8)
+        .mul(0.1)
+        .add(0.004);
       color = color.add(this.lightning.color.mul(this.lightning.flash.mul(lobe))) as V3;
     }
     return color;
@@ -139,7 +141,8 @@ export class Atmosphere {
       // Under the deck the key reaches the rain only through the gap, as for the fog.
       const keyLight = this.look.u.keyColor
         .mul(this.look.u.keyIntensity)
-        .mul(mix(float(0.01), float(0.2), this.look.u.cloudGapStrength));
+        .mul(mix(float(0.002), float(0.03), this.look.u.cloudGapStrength))
+        .mul(smoothstep(0.2, 0.0, dir.y.abs()));
       const ambient = this.look.u.fogColor.mul(this.look.u.ambient.mul(9).add(0.02));
       Loop(VOLUME_STEPS, ({ i }: { i: THREE.Node<'int'> }) => {
         // Exponentially spaced samples: dense near the camera, sparse far away.
@@ -155,7 +158,7 @@ export class Atmosphere {
         const n = texture3D(shape, q).level(float(0)).r;
         const sq = vec3(p.x.sub(drift.x).div(160), p.y.div(4000), p.z.sub(drift.y).div(160));
         const striations = texture3D(detail, sq).level(float(0)).g;
-        const column = saturate(n.sub(0.42).mul(3)).mul(striations.mul(0.7).add(0.3));
+        const column = saturate(n.sub(0.34).mul(3)).mul(striations.mul(0.75).add(0.25));
         // Rain fills the air from the sea to the cloud base.
         const underBase = float(1).sub(
           smoothstep(this.weather.cloudBase.mul(0.7), this.weather.cloudBase, p.y),
@@ -167,7 +170,7 @@ export class Atmosphere {
           const flash = lightning.color
             .mul(lightning.flash)
             .mul(float(1).div(float(1).add(d.div(1400).pow(2))))
-            .mul(1.2);
+            .mul(0.6);
           light = light.add(flash) as V3;
         }
         const stepT = exp(sigma.mul(dt).negate());

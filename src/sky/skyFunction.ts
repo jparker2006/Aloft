@@ -1,7 +1,7 @@
 // Analytic sky radiance for a view direction, shared by the sky background and ocean reflections so the
 // horizon never seams. Replaced by the volumetric cloud sky (step 6); the ocean keeps using this for the
 // far reflection until the sky cube lands.
-import { Fn, dot, exp, float, max, mix, pow, smoothstep } from 'three/tsl';
+import { Fn, dot, exp, float, max, mix, pow, saturate, smoothstep } from 'three/tsl';
 import type * as THREE from 'three/webgpu';
 import type { LookUniforms } from '../render/look';
 
@@ -16,7 +16,9 @@ export function makeSkyRadiance(look: LookUniforms) {
     const keyFlat = look.keyDirection.xz.div(max(look.keyDirection.xz.length(), 1e-4));
     const sunward = pow(dot(flat, keyFlat).mul(0.5).add(0.5), 3);
     const horizon = mix(look.u.skyHorizonAway, look.u.skyHorizon, sunward);
-    const base = mix(horizon, look.u.skyZenith, pow(up, 0.45));
+    // The horizon color lives in a band about 12 degrees deep; above it (seen only through holes in the
+    // deck) the sky is the dark zenith, never the sunset.
+    const base = mix(horizon, look.u.skyZenith, pow(saturate(up.div(0.22)), 0.5));
     // Warm glow around the key light near the horizon.
     const cosSun = max(dot(dir, look.keyDirection), 0);
     const glow = look.u.keyColor

@@ -161,8 +161,9 @@ export function makeFoamCoverage(foamTexture: THREE.Texture, weather: WeatherUni
     const across = dot(inputs.gridXZ, vec2(wind.y.negate(), wind.x));
     const uvAt = (tileAlong: number, tileAcross: number) =>
       vec2(along.div(tileAlong), across.div(tileAcross));
-    const lace = texture(foamTexture, uvAt(2.4, 2.4)).r;
-    const laceBroad = texture(foamTexture, uvAt(7.3, 7.3)).r;
+    // Lace cells are stretched downwind, as wind-dragged foam marbles into streaks.
+    const lace = texture(foamTexture, uvAt(3.6, 1.7)).r;
+    const laceBroad = texture(foamTexture, uvAt(10, 5.2)).r;
     const bubbles = texture(foamTexture, uvAt(0.9, 0.9)).g;
     const streak = texture(foamTexture, uvAt(38, 24)).b;
     const breakup = texture(foamTexture, uvAt(70, 70)).a;
@@ -174,26 +175,28 @@ export function makeFoamCoverage(foamTexture: THREE.Texture, weather: WeatherUni
     // texture) at its own distance, so far whitecaps keep the broad lace and breakup instead of going flat.
     const texel = fwidth(along);
     const fadeAt = (tile: number) => smoothstep(0.08, 0.45, texel.div(tile));
-    const fade = fadeAt(2.4);
+    const fade = fadeAt(1.7);
     const fieldSafe = mix(lace, float(0.338), fade)
       .mul(0.38)
-      .add(mix(laceBroad, float(0.338), fadeAt(7.3)).mul(0.3))
+      .add(mix(laceBroad, float(0.338), fadeAt(5.2)).mul(0.3))
       .add(breakup.mul(0.17))
       .add(mix(bubbles, float(0.084), fadeAt(0.9)).mul(0.15));
     const softness = float(0.26).add(fade.mul(0.2));
 
     const f = inputs.amount.x;
     const fresh = inputs.amount.y;
-    const amount = f.mul(1.35).add(fresh.mul(1.0)).mul(breakup.mul(0.5).add(0.75));
+    // Aged foam is patchy: the breakup field opens wide gaps in it; fresh whitewater stays solid.
+    const agedPatches = smoothstep(0.3, 0.75, breakup).mul(1.1).add(0.15);
+    const amount = f.mul(1.35).mul(agedPatches).add(fresh.mul(1.0));
     const threshold = float(1).sub(amount);
     const dissolved = smoothstep(threshold, threshold.add(softness), fieldSafe);
-    const bubblesSafe = mix(bubbles, float(0.084), smoothstep(0.02, 0.1, texel.div(2.4)));
+    const bubblesSafe = mix(bubbles, float(0.084), smoothstep(0.02, 0.1, texel.div(1.7)));
     const streaky = smoothstep(0.08, 0.45, f)
       .mul(smoothstep(0.5, 0.95, streak))
       .mul(breakup)
       .mul(0.16);
     // Aged foam is a thin film the water shows through; only fresh whitewater is opaque.
-    const opacity = mix(float(0.55), float(1), saturate(fresh.mul(2)));
+    const opacity = mix(float(0.45), float(1), saturate(fresh.mul(2)));
     const coverage = max(dissolved.mul(bubblesSafe.mul(0.15).add(0.9)).mul(opacity), streaky);
     return saturate(coverage) as unknown as F;
   };
