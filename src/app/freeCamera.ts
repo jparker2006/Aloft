@@ -9,17 +9,24 @@ import { MILESTONE_1_BOOKMARKS } from '../shots';
 export interface FreeCameraActions {
   togglePreset(): void;
   strike(): void;
+  /** Sea height under the camera, read back from the GPU (NaN until known). */
+  seaProbe?: { height: number; update(renderer: THREE.WebGPURenderer, x: number, z: number): void };
 }
+
+/** Metres the camera is kept above the sea surface under it, so crests never swallow it. */
+const SEA_CLEARANCE = 1.5;
 
 export class FreeCamera {
   readonly name = 'free-camera';
   private readonly keys = new Set<string>();
   private yaw = 0;
   private pitch = 0;
+  /** Height the camera holds when the sea allows; passing crests lift it above this, then let it back down. */
+  private eyeHeight = 0;
 
   constructor(
     private readonly app: App,
-    actions: FreeCameraActions,
+    private readonly actions: FreeCameraActions,
   ) {
     const canvas = app.renderer.domElement;
     // Pointer lock is optional: some embedded or mobile views refuse it, and newer browsers reject a
@@ -48,6 +55,7 @@ export class FreeCamera {
     addEventListener('keyup', (e) => this.keys.delete(e.code));
     addEventListener('blur', () => this.keys.clear());
     this.syncFromCamera();
+    this.eyeHeight = app.camera.position.y;
   }
 
   private syncFromCamera(): void {
@@ -61,6 +69,7 @@ export class FreeCamera {
     if (!bookmark) return;
     applyBookmarkCamera(this.app, bookmark);
     this.syncFromCamera();
+    this.eyeHeight = this.app.camera.position.y;
   }
 
   update(frame: { realDt: number }): void {
@@ -74,8 +83,13 @@ export class FreeCamera {
     );
     if (move.lengthSq() > 0) {
       move.normalize().multiplyScalar(speed).applyQuaternion(cam.quaternion);
-      cam.position.add(move);
-      cam.position.y = Math.max(cam.position.y, 0.5);
+      cam.position.x += move.x;
+      cam.position.z += move.z;
+      this.eyeHeight = Math.max(this.eyeHeight + move.y, 0.5);
     }
+    const probe = this.actions.seaProbe;
+    probe?.update(this.app.renderer, cam.position.x, cam.position.z);
+    const floor = probe && Number.isFinite(probe.height) ? probe.height + SEA_CLEARANCE : 0.5;
+    cam.position.y = Math.max(this.eyeHeight, floor);
   }
 }

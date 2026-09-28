@@ -37,6 +37,7 @@ async function boot(): Promise<void> {
 
   const hideLoading = params.shot ? () => undefined : showLoading();
   const stage = buildStage(app);
+  (window as unknown as { __stage?: unknown }).__stage = stage;
   const perf = new PerformanceController(app, { apply: (level) => stage.applyQuality(level) });
   const profiler = new ProfilerOverlay(app, perf);
   app.addSystem({

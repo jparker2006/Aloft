@@ -8,6 +8,7 @@ import type { PrewarmHook, SettleHook, ShotHook } from './app/shot';
 import { LookBlender, LookUniforms, resolvePreset } from './render/look';
 import { WEATHER, WeatherController } from './render/weather';
 import { Ocean } from './ocean/ocean';
+import { SurfaceProbe } from './ocean/probe';
 import { Clipmap } from './ocean/clipmap';
 import { createOceanMaterial } from './ocean/surface';
 import { loadDataTexture, whenLoaded } from './render/assets';
@@ -34,6 +35,8 @@ export interface Stage {
   shotHooks: ShotHook[];
   prewarmHooks: PrewarmHook[];
   settleHooks: SettleHook[];
+  /** Sea height under the free camera (keeps it above crests). */
+  seaProbe: SurfaceProbe;
 }
 
 export function buildStage(app: App): Stage {
@@ -41,6 +44,7 @@ export function buildStage(app: App): Stage {
   const lookBlender = app.addSystem(new LookBlender(look));
   const weather = app.addSystem(new WeatherController(WEATHER.gale));
   const ocean = app.addSystem(new Ocean(app, weather));
+  const seaProbe = new SurfaceProbe(ocean);
   const frameUniforms = app.addSystem(new FrameUniforms());
   const foamUrl = `${import.meta.env.BASE_URL}assets/tex/foam.png`;
   const foamTexture = loadDataTexture(foamUrl, {
@@ -189,5 +193,6 @@ export function buildStage(app: App): Stage {
     shotHooks,
     prewarmHooks,
     settleHooks,
+    seaProbe,
   };
 }
