@@ -42,7 +42,7 @@ export function buildStage(app: App): Stage {
   const weather = app.addSystem(new WeatherController(WEATHER.gale));
   const ocean = app.addSystem(new Ocean(app, weather));
   const frameUniforms = app.addSystem(new FrameUniforms());
-  const foamUrl = '/assets/tex/foam.png';
+  const foamUrl = `${import.meta.env.BASE_URL}assets/tex/foam.png`;
   const foamTexture = loadDataTexture(foamUrl, {
     script: 'tools/blender/foam_texture.py',
     fallback: [60, 10, 30, 128],

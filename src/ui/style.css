@@ -121,3 +121,64 @@ canvas {
   pointer-events: none;
   z-index: 5;
 }
+
+.help {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  max-width: min(22rem, calc(100vw - 32px));
+  padding: 0.9rem 1.1rem 0.8rem;
+  background: rgba(6, 9, 13, 0.78);
+  border: 1px solid #253040;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  z-index: 5;
+}
+
+.help h2 {
+  margin: 0 0 0.5rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+.help dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.8rem;
+  margin: 0;
+}
+
+.help dt {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #f0c890;
+  white-space: nowrap;
+}
+
+.help dd {
+  margin: 0;
+  opacity: 0.85;
+}
+
+.help-close {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.45rem;
+  font: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0.15rem 0.35rem;
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.help-close:hover,
+.help-close:focus-visible {
+  opacity: 1;
+}

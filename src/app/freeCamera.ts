@@ -22,7 +22,12 @@ export class FreeCamera {
     actions: FreeCameraActions,
   ) {
     const canvas = app.renderer.domElement;
-    canvas.addEventListener('click', () => void canvas.requestPointerLock?.());
+    // Pointer lock is optional: some embedded or mobile views refuse it, and newer browsers reject a
+    // promise instead of throwing.
+    canvas.addEventListener('click', () => {
+      const request = canvas.requestPointerLock?.() as unknown as Promise<void> | undefined;
+      request?.catch?.(() => undefined);
+    });
     addEventListener('mousemove', (e) => {
       if (document.pointerLockElement !== canvas) return;
       const s = 0.0022 * app.settings.mouseSensitivity;

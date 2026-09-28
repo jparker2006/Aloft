@@ -7,6 +7,7 @@ import { runShot } from './app/shot';
 import { FreeCamera } from './app/freeCamera';
 import { PerformanceController } from './render/performance';
 import { buildStage } from './stage';
+import { showHelp } from './ui/help';
 import { showLoading } from './ui/loading';
 import { ProfilerOverlay } from './ui/profiler';
 import { showPhotosensitivityNotice } from './ui/photosensitivity';
@@ -63,6 +64,7 @@ async function boot(): Promise<void> {
       stage.lightning.reduced = reduce;
     });
     stage.lightning.suppressed = false;
+    showHelp();
   }
 }
 
