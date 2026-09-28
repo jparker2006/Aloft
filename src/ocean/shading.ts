@@ -100,7 +100,8 @@ export function makeSeaShading(look: LookUniforms, weather: WeatherUniforms, sky
 
     // Glint: GGX with roughness from wind, widened with distance to stand in for filtered-out slopes.
     const windRough = float(0.035).add(weather.windSpeed.mul(0.0016));
-    const alpha = clamp(windRough.add(distance.mul(0.00004)), 0.03, 0.35);
+    // Kept narrow: facing a low sun, a wide lobe turns the whole sea into warm sheen instead of a path.
+    const alpha = clamp(windRough.add(distance.mul(0.000015)), 0.03, 0.2);
     const h = normalize(L.add(v));
     const nDotL = max(dot(n, L), 0);
     const nDotH = max(dot(n, h), 0);
@@ -169,23 +170,31 @@ export function makeFoamCoverage(foamTexture: THREE.Texture, weather: WeatherUni
     // Foam dissolves rather than being drawn: the lace acts as a threshold field (bubble walls high,
     // cell centres low) and the foam amount decides how much of it passes. Fresh foam covers everything;
     // ageing foam opens holes at the cell centres and ends as a thin irregular net, then nothing.
-    const field = lace.mul(0.38).add(laceBroad.mul(0.3)).add(breakup.mul(0.17)).add(bubbles.mul(0.15));
-    // Where one texel spans many pixels, fade the field to its mean and widen the edge.
-    const footprint = fwidth(along).div(2.4);
-    const fade = smoothstep(0.08, 0.45, footprint);
-    const fieldSafe = mix(field, float(0.38), fade);
-    const softness = float(0.2).add(fade.mul(0.25));
+    // Where one texel spans many pixels, each octave fades to its own mean (measured from the baked
+    // texture) at its own distance, so far whitecaps keep the broad lace and breakup instead of going flat.
+    const texel = fwidth(along);
+    const fadeAt = (tile: number) => smoothstep(0.08, 0.45, texel.div(tile));
+    const fade = fadeAt(2.4);
+    const fieldSafe = mix(lace, float(0.338), fade)
+      .mul(0.38)
+      .add(mix(laceBroad, float(0.338), fadeAt(7.3)).mul(0.3))
+      .add(breakup.mul(0.17))
+      .add(mix(bubbles, float(0.084), fadeAt(0.9)).mul(0.15));
+    const softness = float(0.26).add(fade.mul(0.2));
 
     const f = inputs.amount.x;
     const fresh = inputs.amount.y;
     const amount = f.mul(1.35).add(fresh.mul(1.0)).mul(breakup.mul(0.5).add(0.75));
     const threshold = float(1).sub(amount);
     const dissolved = smoothstep(threshold, threshold.add(softness), fieldSafe);
-    const bubblesSafe = mix(bubbles, float(0.06), smoothstep(0.02, 0.1, footprint));
+    const bubblesSafe = mix(bubbles, float(0.084), smoothstep(0.02, 0.1, texel.div(2.4)));
     const streaky = smoothstep(0.08, 0.45, f)
       .mul(smoothstep(0.5, 0.95, streak))
-      .mul(0.32);
-    const coverage = max(dissolved.mul(bubblesSafe.mul(0.15).add(0.9)), streaky);
+      .mul(breakup)
+      .mul(0.16);
+    // Aged foam is a thin film the water shows through; only fresh whitewater is opaque.
+    const opacity = mix(float(0.55), float(1), saturate(fresh.mul(2)));
+    const coverage = max(dissolved.mul(bubblesSafe.mul(0.15).add(0.9)).mul(opacity), streaky);
     return saturate(coverage) as unknown as F;
   };
 }
@@ -194,10 +203,12 @@ export function makeFoamCoverage(foamTexture: THREE.Texture, weather: WeatherUni
 export function foamRadiance(look: LookUniforms, normal: V3, view: V3, flash: FlashLight | null = null): V3 {
   const L = look.keyDirection;
   const keyRadiance = look.u.keyColor.mul(look.u.keyIntensity);
-  const diffuse = saturate(dot(normal, L).mul(0.6).add(0.4));
-  const backlight = pow(saturate(dot(view.negate(), L)), 6).mul(0.35);
+  // Lambert without wrap: a sun 2.5 degrees up lights only the faces turned toward it, as in the
+  // references, where whitecaps glow on sun-facing slopes and stay grey elsewhere.
+  const diffuse = saturate(dot(normal, L));
+  const backlight = pow(saturate(dot(view.negate(), L)), 6).mul(0.06);
   const albedo = float(0.82).mul(look.u.foamBrightness);
-  let light = look.u.ambient.mul(2.4).add(keyRadiance.mul(diffuse.mul(0.32).add(backlight))) as unknown as V3;
+  let light = look.u.ambient.mul(2.4).add(keyRadiance.mul(diffuse.mul(0.9).add(backlight))) as unknown as V3;
   if (flash)
     light = light.add(flash.radiance.mul(saturate(dot(normal, flash.direction)).mul(0.5).add(0.2))) as V3;
   return light.mul(albedo) as unknown as V3;

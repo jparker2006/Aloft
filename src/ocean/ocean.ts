@@ -109,11 +109,15 @@ export class Ocean {
     return { height, jacobian };
   }
 
-  /** Accumulated foam (x) and fresh injection (y) at undisplaced world XZ, summed over cascades. */
-  foamAmount(xz: V2): THREE.Node<'vec2'> {
+  /**
+   * Accumulated foam (x) and fresh injection (y) at undisplaced world XZ, summed over cascades.
+   * `explicitLevel` samples mip 0 explicitly, for compute stages (no derivatives there).
+   */
+  foamAmount(xz: V2, explicitLevel = false): THREE.Node<'vec2'> {
     let sum = vec4(0, 0, 0, 0).xy as THREE.Node<'vec2'>;
     this.foam.forEach((f, i) => {
-      const node = texture(f.texture, this.uvFor(i, xz));
+      const sampled = texture(f.texture, this.uvFor(i, xz));
+      const node = explicitLevel ? sampled.level(float(0)) : sampled;
       this.foamNodes.push({ node, accumulator: f });
       sum = sum.add(node.xy) as THREE.Node<'vec2'>;
     });

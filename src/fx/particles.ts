@@ -48,6 +48,10 @@ interface ArrayView {
 const RAIN_BOX = 70;
 const RAIN_BELOW = 20;
 const RAIN_ABOVE = 45;
+/** Spawn attempts per dead spindrift particle per step. */
+const SPAWN_TRIES = 4;
+/** Fresh foam injection above which a crest is breaking hard enough to tear spray off. */
+const SPAWN_FRESH_FOAM = 0.35;
 
 export interface ParticleLighting {
   look: LookUniforms;
@@ -59,11 +63,12 @@ export interface ParticleLighting {
 function particleLight(lit: ParticleLighting, view: V3, forward: number, ambientGain: number): V3 {
   const L = lit.look.keyDirection;
   const key = lit.look.u.keyColor.mul(lit.look.u.keyIntensity);
+  // Under the deck the key light only reaches particles as forward scatter toward the gap.
   const scatter = pow(saturate(dot(view.negate(), L)), 7)
     .mul(forward)
-    .add(0.25);
+    .add(0.04);
   let light = lit.look.u.ambient.mul(ambientGain).add(key.mul(scatter)) as unknown as V3;
-  if (lit.lightning) light = light.add(lit.lightning.color.mul(lit.lightning.flash.mul(1.4))) as V3;
+  if (lit.lightning) light = light.add(lit.lightning.color.mul(lit.lightning.flash.mul(0.5))) as V3;
   return light;
 }
 
@@ -152,13 +157,15 @@ export class Rain {
       .add(side.mul(corner.x.mul(width)))
       .add(dir.mul(corner.y.sub(0.5).mul(length)));
     const visible = hash(instanceIndex.add(count * 5)).lessThan(w.rainRate);
-    const fade = smoothstep(0.6, 2.5, distance).mul(
+    // Drops closer than a few metres would smear across the lens as bars; lens rain covers that range.
+    const fade = smoothstep(2.5, 6, distance).mul(
       float(1).sub(smoothstep(RAIN_BOX * 0.3, RAIN_BOX * 0.5, distance)),
     );
     const edge = float(1).sub(corner.x.abs());
     const energy = float(0.0016).div(width);
-    const alpha = visible.select(fade.mul(edge).mul(energy).mul(0.32), float(0));
-    material.colorNode = vec4(particleLight(lit, view, 3.5, 5), alpha);
+    // Drops are clear: they show the light around them at low contrast, so they stay faint over the sea.
+    const alpha = visible.select(fade.mul(edge).mul(energy).mul(0.09), float(0));
+    material.colorNode = vec4(particleLight(lit, view, 3.5, 3), alpha);
     this.mesh = new THREE.Mesh(quad, material);
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 2;
@@ -205,20 +212,30 @@ export class Spindrift {
       const age = s.w.add(this.dt).toVar();
       const life = m.w.toVar();
       If(age.greaterThanEqual(life), () => {
-        // Scout a random point near the camera; spawn only on a breaking crest in a strong wind.
-        const seed = instanceIndex.add(this.frame.mul(uint(7919)));
-        const angle = hash(seed).mul(Math.PI * 2);
-        const radius = pow(hash(seed.add(1)), 0.6).mul(170);
-        const xz = this.camera.xz.add(vec2(angle.cos(), angle.sin()).mul(radius));
-        const surface = ocean.surfaceLevel0(xz);
-        const breaking = surface.jacobian.lessThan(0.55).and(w.windSpeed.greaterThan(14));
-        If(breaking, () => {
-          p.assign(vec3(xz.x, surface.height.add(0.2), xz.y));
-          const up = hash(seed.add(2)).mul(3).add(1.5);
-          v.assign(windVelocity.mul(hash(seed.add(3)).mul(0.3).add(0.35)).add(vec3(0, up, 0)));
-          age.assign(0);
-          life.assign(hash(seed.add(4)).mul(1.8).add(1.2));
-        });
+        // Scout random points near the camera; spawn on the first breaking crest found in a strong wind.
+        // Only a few percent of the sea is breaking at once, so each attempt tries several points.
+        for (let k = 0; k < SPAWN_TRIES; k++) {
+          const seed = instanceIndex.add(this.frame.mul(uint(7919))).add(uint(k * 104729));
+          const angle = hash(seed).mul(Math.PI * 2);
+          const radius = pow(hash(seed.add(1)), 0.6).mul(170);
+          const xz = this.camera.xz.add(vec2(angle.cos(), angle.sin()).mul(radius));
+          const surface = ocean.surfaceLevel0(xz);
+          // Breaking happens mostly in the fine cascade, which the foam injection sees and the coarse
+          // Jacobian does not: spawn where fresh foam is being made, or where the swell itself breaks.
+          const fresh = ocean.foamAmount(xz, true).y;
+          const breaking = fresh
+            .greaterThan(SPAWN_FRESH_FOAM)
+            .or(surface.jacobian.lessThan(0.6))
+            .and(w.windSpeed.greaterThan(14))
+            .and(age.greaterThanEqual(life));
+          If(breaking, () => {
+            p.assign(vec3(xz.x, surface.height.add(0.2), xz.y));
+            const up = hash(seed.add(2)).mul(3).add(1.5);
+            v.assign(windVelocity.mul(hash(seed.add(3)).mul(0.3).add(0.35)).add(vec3(0, up, 0)));
+            age.assign(0);
+            life.assign(hash(seed.add(4)).mul(1.8).add(1.2));
+          });
+        }
       }).Else(() => {
         // Drag toward the wind, gravity partly offset by turbulence.
         v.assign(mix(windVelocity, v, exp(this.dt.mul(-1.6))).add(vec3(0, -4.5, 0).mul(this.dt)));

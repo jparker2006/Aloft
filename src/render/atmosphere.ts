@@ -24,9 +24,11 @@ import {
   normalize,
   pow,
   saturate,
+  smoothstep,
   texture3D,
   uniform,
   vec3,
+  vec4,
 } from 'three/tsl';
 import type { LightningUniforms } from '../fx/lightning';
 import type { LookUniforms } from './look';
@@ -39,11 +41,14 @@ type V3 = THREE.Node<'vec3'>;
 /** Farthest distance fog is integrated to (the sky counts as this far away). */
 export const FOG_MAX_DISTANCE = 30000;
 const VOLUME_STEPS = 12;
-const VOLUME_MAX_DISTANCE = 9000;
+const VOLUME_MAX_DISTANCE = 12000;
+/** Extinction of a rain curtain relative to the ambient haze. */
+const CURTAIN_DENSITY = 4;
 
 export class Atmosphere {
   /** Extinction at sea level per metre, set from the weather each frame. */
   readonly density = uniform(0.0008);
+  readonly cameraPos = uniform(new THREE.Vector3());
 
   constructor(
     private readonly look: LookUniforms,
@@ -51,7 +56,8 @@ export class Atmosphere {
     private readonly lightning: LightningUniforms | null,
   ) {}
 
-  update(): void {
+  update(cameraPosition: THREE.Vector3): void {
+    this.cameraPos.value.copy(cameraPosition);
     const visibility = Math.max(this.weather.visibility.value, 200);
     const rain = this.weather.rainRate.value;
     // Koschmieder, then extra extinction from rain; the look's fog density scales the whole thing.
@@ -80,16 +86,18 @@ export class Atmosphere {
   inScatter(dir: V3): V3 {
     const L = this.look.keyDirection;
     const cosTheta = dir.dot(L);
-    // Forward-scattering lobe toward the key light (the glow around a low sun through haze).
-    const g = 0.72;
+    // Forward-scattering lobe toward the key light (the glow around a low sun through haze). Under the
+    // deck the key only reaches the haze through the gap, so the lobe is scaled by the gap's strength.
+    const g = 0.8;
     const hg = float((1 - g * g) / (4 * Math.PI)).div(pow(float(1 + g * g).sub(cosTheta.mul(2 * g)), 1.5));
-    const key = this.look.u.keyColor.mul(this.look.u.keyIntensity).mul(hg.mul(0.9));
+    const underDeck = mix(float(0.02), float(0.18), this.look.u.cloudGapStrength);
+    const key = this.look.u.keyColor.mul(this.look.u.keyIntensity).mul(hg.mul(underDeck));
     let color = this.look.u.fogColor.mul(this.look.u.ambient.mul(9).add(0.02)).add(key) as unknown as V3;
     if (this.lightning) {
-      const toFlash = normalize(this.lightning.cloudPos);
-      const lobe = pow(saturate(dir.dot(toFlash)), 3)
-        .mul(0.8)
-        .add(0.12);
+      const toFlash = normalize(this.lightning.cloudPos.sub(this.cameraPos));
+      const lobe = pow(saturate(dir.dot(toFlash)), 6)
+        .mul(0.25)
+        .add(0.02);
       color = color.add(this.lightning.color.mul(this.lightning.flash.mul(lobe))) as V3;
     }
     return color;
@@ -102,53 +110,71 @@ export class Atmosphere {
   }
 
   /**
-   * Half-res raymarch of light scattered by rain curtains from the lightning strike. Returns radiance
-   * to add (rgb) and nothing else. `noise` is the clouds' 3D shape volume.
+   * Half-res raymarch through rain curtains: columns of heavier rain hanging from the deck, drifting with
+   * the wind, with fine vertical striations. They are lit by the key light where it enters under the deck
+   * (strong forward scatter, so shafts glow when backlit against the dusk gap) and by the lightning
+   * strike as a point source. Returns in-scattered radiance (rgb) and the curtains' own transmittance (a),
+   * on top of the analytic fog. `shape` and `detail` are the clouds' noise volumes.
    */
   volumetric(
     cameraPos: V3,
     dir: V3,
     sceneDistance: F,
-    noise: THREE.Storage3DTexture,
+    shape: THREE.Storage3DTexture,
+    detail: THREE.Storage3DTexture,
     frame: FrameUniforms,
     jitter: F,
-  ): V3 {
-    if (!this.lightning) return vec3(0, 0, 0) as V3;
+  ): THREE.Node<'vec4'> {
     const lightning = this.lightning;
+    const L = this.look.keyDirection;
     return Fn(() => {
       const radiance = vec3(0, 0, 0).toVar();
+      const transmittance = float(1).toVar();
       const end = min(sceneDistance, VOLUME_MAX_DISTANCE);
+      const cosKey = dir.dot(L);
+      const g = 0.75;
+      const phaseKey = float((1 - g * g) / (4 * Math.PI)).div(
+        pow(float(1 + g * g).sub(cosKey.mul(2 * g)), 1.5),
+      );
+      // Under the deck the key reaches the rain only through the gap, as for the fog.
+      const keyLight = this.look.u.keyColor
+        .mul(this.look.u.keyIntensity)
+        .mul(mix(float(0.01), float(0.2), this.look.u.cloudGapStrength));
+      const ambient = this.look.u.fogColor.mul(this.look.u.ambient.mul(9).add(0.02));
       Loop(VOLUME_STEPS, ({ i }: { i: THREE.Node<'int'> }) => {
         // Exponentially spaced samples: dense near the camera, sparse far away.
         const a = float(i).add(jitter).div(VOLUME_STEPS);
         const b = float(i).add(1).add(jitter).div(VOLUME_STEPS);
         const t0 = pow(a, 2).mul(end);
         const t1 = pow(b, 2).mul(end);
+        const dt = t1.sub(t0);
         const p = cameraPos.add(dir.mul(t0));
-        // Rain curtains: tall shafts drifting with the wind, from the cloud noise at a large scale.
-        const q = vec3(
-          p.x.sub(this.weather.windDir.x.mul(frame.time.mul(12))).div(2600),
-          p.y.div(9000),
-          p.z.sub(this.weather.windDir.y.mul(frame.time.mul(12))).div(2600),
+        const drift = this.weather.windDir.mul(frame.time.mul(12));
+        // Curtains: tall columns from the cloud noise at a large scale, striated by the detail noise.
+        const q = vec3(p.x.sub(drift.x).div(2600), p.y.div(9000), p.z.sub(drift.y).div(2600));
+        const n = texture3D(shape, q).level(float(0)).r;
+        const sq = vec3(p.x.sub(drift.x).div(160), p.y.div(4000), p.z.sub(drift.y).div(160));
+        const striations = texture3D(detail, sq).level(float(0)).g;
+        const column = saturate(n.sub(0.42).mul(3)).mul(striations.mul(0.7).add(0.3));
+        // Rain fills the air from the sea to the cloud base.
+        const underBase = float(1).sub(
+          smoothstep(this.weather.cloudBase.mul(0.7), this.weather.cloudBase, p.y),
         );
-        const n = texture3D(noise, q).level(float(0)).r;
-        const curtain = saturate(n.sub(0.35).mul(2.2)).mul(this.weather.rainRate);
-        const sigma = this.density
-          .mul(exp(p.y.mul(this.look.u.fogHeightFalloff).negate()))
-          .mul(curtain.mul(3).add(0.3));
-        const d = p.sub(lightning.cloudPos).length();
-        const light = lightning.color
-          .mul(lightning.flash)
-          .mul(float(1).div(float(1).add(d.div(1400).pow(2))))
-          .mul(18);
-        radiance.addAssign(
-          light
-            .mul(sigma)
-            .mul(t1.sub(t0))
-            .mul(1 / (4 * Math.PI)),
-        );
+        const sigma = this.density.mul(column.mul(this.weather.rainRate).mul(underBase)).mul(CURTAIN_DENSITY);
+        let light = ambient.add(keyLight.mul(phaseKey)) as unknown as V3;
+        if (lightning) {
+          const d = p.sub(lightning.cloudPos).length();
+          const flash = lightning.color
+            .mul(lightning.flash)
+            .mul(float(1).div(float(1).add(d.div(1400).pow(2))))
+            .mul(1.2);
+          light = light.add(flash) as V3;
+        }
+        const stepT = exp(sigma.mul(dt).negate());
+        radiance.addAssign(light.mul(float(1).sub(stepT)).mul(transmittance));
+        transmittance.mulAssign(stepT);
       });
-      return radiance;
-    })() as unknown as V3;
+      return vec4(radiance, transmittance);
+    })() as unknown as THREE.Node<'vec4'>;
   }
 }

@@ -209,9 +209,7 @@ export class StormClouds {
     const inGap = float(1)
       .sub(smoothstep(this.look.u.cloudGapWidth.mul(0.35), this.look.u.cloudGapWidth, dBearing))
       .mul(smoothstep(6000, 14000, dist));
-    return this.look.u.cloudCoverage.mul(
-      float(1).sub(inGap.mul(this.look.u.cloudGapStrength).mul(0.7)),
-    ) as F;
+    return this.look.u.cloudCoverage.mul(float(1).sub(inGap.mul(this.look.u.cloudGapStrength).mul(0.7))) as F;
   }
 
   /** Height fraction through the deck, 0 at the lowest pouches and 1 at the top. */
@@ -251,7 +249,9 @@ export class StormClouds {
     const cov = this.coverageAt(p);
     let d = saturate(remap(shape.mul(profile) as F, cov.oneMinus() as F, 1, 0, 1)).mul(cov) as F;
     if (withDetail) {
-      const dq = vec3(p.x.sub(offset.x), p.y.add(this.frame.time.mul(3)), p.z.sub(offset.y)).div(DETAIL_SCALE);
+      const dq = vec3(p.x.sub(offset.x), p.y.add(this.frame.time.mul(3)), p.z.sub(offset.y)).div(
+        DETAIL_SCALE,
+      );
       const det = texture3D(this.noise.detail, dq).level(float(0));
       const hf = det.r.mul(0.625).add(det.g.mul(0.25)).add(det.b.mul(0.125));
       const erosion = mix(hf, hf.oneMinus(), saturate(h.mul(5)));
@@ -319,7 +319,9 @@ export class StormClouds {
   /** Irradiance on the deck top that diffuses down through it. */
   private topLight(): V3 {
     const u = this.look.u;
-    return u.ambient.mul(TOP_AMBIENT).add(u.keyColor.mul(u.keyIntensity).mul(u.cloudLight).mul(TOP_KEY)) as V3;
+    return u.ambient
+      .mul(TOP_AMBIENT)
+      .add(u.keyColor.mul(u.keyIntensity).mul(u.cloudLight).mul(TOP_KEY)) as V3;
   }
 
   /**
@@ -362,10 +364,14 @@ export class StormClouds {
       .mul(u.cloudLight)
       .mul(direct.mul(powder.mul(0.6).add(0.4)).mul(Math.PI));
     const h = isDeck ? this.deckHeight(p) : (float(0) as F);
-    const odUp = isDeck ? this.upOpticalDepth(p) : this.upOpticalDepth(vec3(p.x, this.weather.cloudBase, p.z) as V3);
+    const odUp = isDeck
+      ? this.upOpticalDepth(p)
+      : this.upOpticalDepth(vec3(p.x, this.weather.cloudBase, p.z) as V3);
     // Lumps hanging low under the deck sit in its shadow; the base between them, higher up, is lighter.
     const depthShade = isDeck ? mix(float(0.16), float(1), smoothstep(0, 0.4, h)) : float(0.35);
-    const diffuse = this.topLight().div(float(1).add(odUp.mul(DIFFUSION_K))).mul(depthShade);
+    const diffuse = this.topLight()
+      .div(float(1).add(odUp.mul(DIFFUSION_K)))
+      .mul(depthShade);
     const lowness = isDeck ? (float(1).sub(h).pow(3) as F) : (float(0.2) as F);
     const below = u.cloudShadow.add(this.underLight(p, lowness));
     return key.add(diffuse).add(below).add(this.flashLight(p)) as V3;
@@ -508,7 +514,9 @@ export class StormClouds {
       const diffuse = this.topLight().div(float(1).add(od.mul(2).mul(DIFFUSION_K)));
       let cloudColor = u.cloudShadow.add(diffuse).add(this.underLight(p, float(0.6) as F)) as V3;
       if (this.lightning) {
-        const flash = this.lightning.color.mul(this.lightning.flash.mul(this.flashFalloff(p)).mul(FLASH_POWER * 0.35));
+        const flash = this.lightning.color.mul(
+          this.lightning.flash.mul(this.flashFalloff(p)).mul(FLASH_POWER * 0.35),
+        );
         cloudColor = cloudColor.add(flash) as V3;
       }
       return mix(sky(dir), cloudColor, cover) as V3;

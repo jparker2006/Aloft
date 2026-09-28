@@ -691,7 +691,7 @@ Audio cues double as gameplay warnings (dismast groan, lashing creak), so they m
 | Control bindings | Section 9 tables | Milestone 2 playtest |
 | Distance to lighthouse is authored per act, not simulated | Yes | Milestone 5 |
 | Tone mapper | AgX vs ACES-fitted, by capture | Milestone 1 |
-| Volumetric technique | Froxel grid vs half-res raymarch, by profiling | Milestone 1 |
+| Volumetric technique | **Decided for M1: half-res raymarch** (12 exponentially spaced steps, jittered, at half resolution with a quarter-resolution ladder rung). Lightning is the only local light in M1, and one point light through rain curtains does not justify a froxel grid's fixed cost (a 160x90x64 froxel inject and integrate every frame). Revisit when the lantern and lighthouse beam add local lights; profile both on the target machine then. | Revisit in milestone 4 |
 | Audio direction | Section 13 | Milestone 4 |
 | Loading time target | Under 10 s | Milestone 1 |
 

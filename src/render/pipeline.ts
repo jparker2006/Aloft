@@ -116,21 +116,19 @@ export class FramePipeline {
     if (!p.has('nofog')) {
       const ray = viewRay(screenUV);
       hdr = atmosphere.apply(hdr, this.camPos.y, ray.dir, ray.distance);
-      if (options.lightning && !p.has('novolume')) {
+      if (!p.has('novolume')) {
         const volumetric = rtt(
           Fn(() => {
             const r = viewRay(screenUV);
             const jitter = fract(hash(screenCoordinate.xy).add(this.frameIndex.mul(0.618034)));
-            return vec4(
-              atmosphere.volumetric(
-                this.camPos,
-                r.dir,
-                r.distance,
-                options.clouds.noise.shape,
-                frame,
-                jitter,
-              ),
-              1,
+            return atmosphere.volumetric(
+              this.camPos,
+              r.dir,
+              r.distance,
+              options.clouds.noise.shape,
+              options.clouds.noise.detail,
+              frame,
+              jitter,
             );
           })(),
           null,
@@ -138,14 +136,16 @@ export class FramePipeline {
           { type: THREE.HalfFloatType, resolutionScale: 0.5 },
         );
         this.volumetricNode = volumetric as unknown as { setResolutionScale(scale: number): void };
-        hdr = hdr.add(volumetric.sample(screenUV).rgb) as V3;
+        const curtains = volumetric.sample(screenUV);
+        hdr = hdr.mul(curtains.a).add(curtains.rgb) as V3;
       }
     }
 
     let image: V3 = hdr;
     if (!p.has('notaa')) image = traa(vec4(image, 1), depth, motion, app.camera).rgb as unknown as V3;
     if (!p.has('nomotionblur')) {
-      image = motionBlur(convertToTexture(vec4(image, 1)), motion.mul(this.motionBlurScale), int(8)).rgb as unknown as V3;
+      image = motionBlur(convertToTexture(vec4(image, 1)), motion.mul(this.motionBlurScale), int(8))
+        .rgb as unknown as V3;
     }
     if (!p.has('nobloom')) {
       const glow = bloom(vec4(image, 1), 1, 0.55, 0.85);
@@ -225,7 +225,7 @@ export class FramePipeline {
     this.camPos.value.copy(camera.position);
     camera.getWorldDirection(this.camForward.value);
     this.frameIndex.value = (this.frameIndex.value + 1) % 4096;
-    this.atmosphere.update();
+    this.atmosphere.update(camera.position);
     // Still captures and the first frames after a cut have no meaningful motion to blur.
     this.motionBlurScale.value = dt > 0 && this.framesSinceCut > 2 ? 1 : 0;
     this.pipeline.render();
